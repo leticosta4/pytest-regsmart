@@ -16,7 +16,6 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
-from .change_tracker import changeTracker
 from .const import (DATA_DIR, DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY,
                     DEFAULT_SEED, DEFAULT_WEIGHT, LEVEL)
 from .rank import get_ranking
@@ -32,7 +31,7 @@ Set weights on different prioritization heuristics,
 separated by hyphens `-`.
 The sum of weights will be normalized to 1.
 Higher weight means that heuristic will be favored.
-Default value is 1-0-0.
+Default value is 1-0.
 """)
 
 HIST_LEN_HELP = textwrap.dedent("""\
@@ -56,9 +55,9 @@ Default value is PUT.
 
 REPLAY_HELP = textwrap.dedent("""
 Provide a text file where each line is a test ID.
-pytest-ranking will run tests with the order defined in the file.
+pytest-ranking will run tests with the order defined in the file.  
 Default value is None.
-""")
+""")  ## ver ainda o que fazer sobre isso
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -121,13 +120,13 @@ def weight_type(string: str) -> str:
         return string
     try:
         weights = string.split("-")
-        assert len(weights) == 3
+        assert len(weights) == 2
         weights = [float(w) for w in weights]
         return string
     except (AssertionError, ValueError):
         raise argparse.ArgumentTypeError(
             "Cannot parse input for `--rank-weight`."
-            + "Valid examples: 1-0-0, 0.4-0.2-0.2, and 2-7-1."
+            + "Valid examples: 1-0, 0.4-0.2, and 2-7."
         )
 
 
@@ -144,6 +143,7 @@ def level_type(string: str) -> str:
             "Invalid input for `--rank-level`."
             + " Please run `pytest --help` for instruction."
         )
+    #talvez add aqui a condição de "nivel de granularidade nao valido por causa do conjunto de testes selecionado"
 
 
 def replay_type(string: str) -> str:
@@ -161,7 +161,7 @@ def replay_type(string: str) -> str:
         )
 
 
-def min_max_normalization(x: list[float]) -> np.ndarray:
+def min_max_normalization(x: list[float]) -> np.ndarray:  # talvez isso deva sair daqui
     x = np.array(x)
     x_range = (np.max(x) - np.min(x))
     x = (x - np.min(x)) / x_range if x_range else np.zeros(len(x))
@@ -179,7 +179,6 @@ class RTPRunner:
         self.replay_file = self.parse_replay()
         self.hist_len = self.parse_hist_len()
         self.seed = self.parse_seed()
-        self.chgtracker = changeTracker(config)
 
     def parse_rtp_weights(self) -> list[float]:
         """Get weights, non-default CLI overrides ini file input."""
@@ -192,7 +191,7 @@ class RTPRunner:
         weights = [float(w) for w in weights]
         weight_sum = sum(weights)
         if weight_sum == 0:
-            return [0, 0, 0]
+            return [0, 0]
         weights = [w_i / weight_sum for w_i in weights]
         return weights
 
@@ -270,7 +269,7 @@ class RTPRunner:
             with open(self.replay_file) as f:
                 test_list = [x.strip() for x in f.readlines()]
                 scores = {x: i for i, x in enumerate(test_list)}
-        elif self.weights == [0, 0, 0]:
+        elif self.weights == [0, 0]:
             # Run tests in random order.
             # Pre-sort so that all workers gets the same order in pytest-xdist.
             # https://pytest-xdist.readthedocs.io/en/stable/known-limitations.html
@@ -279,18 +278,17 @@ class RTPRunner:
             scores = {item.nodeid: random.random() for item in items}
         else:
             # Prioritize by test features.
-            w_time, w_fail, w_rel = self.weights
+            w_time, w_fail = self.weights
             h_time = self.load_feature("last_durations", items, True)
             h_fail = self.load_feature("num_runs_since_fail", items, True)
-            h_rel = self.load_feature("change_similarity", items, False)
 
             def hybrid(i):
                 # Linearly combine different heurisic values.
                 # The higher, the earlier the test will be run.
-                s = h_time[i] * w_time + h_fail[i] * w_fail + h_rel[i] * w_rel
+                s = h_time[i] * w_time + h_fail[i] * w_fail
                 return -s
 
-            scores = {item.nodeid: hybrid(i) for i, item in enumerate(items)}
+            scores = {item.nodeid: hybrid(i) for i, item in enumerate(items)} # revisar
 
         rank = get_ranking(scores, self.level, init_order)
 
@@ -348,13 +346,13 @@ class RTPRunner:
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if self.config.getoption("--rank"):
-            if self.replay_file and self.weights == [0, 0, 0]:
+            if self.replay_file and self.weights == [0, 0]:
                 raise argparse.ArgumentTypeError(
                     "--rank-replay cannot be used together with random order."
                 )
             self.run_rtp(items)
 
-    def pytest_sessionfinish(self, session: Session, exitstatus: int) -> None:
+    def pytest_sessionfinish(self, session: Session, exitstatus: int) -> None:  #ver se insiro realmente exit status e session ou se removo
         start_time = time.time()
         compute_test_features(self.config, self.test_reports, self.hist_len)
         # Record feature collection runtime.
@@ -366,11 +364,11 @@ class RTPRunner:
             self,
             terminalreporter: TerminalReporter,
             exitstatus: int,
-            config: Config) -> None:
+            config: Config) -> None:   #ver se insiro realmente exit status e config ou se removo
         """Report plugin runtime when it is enabled."""
         if self.config.getoption("--rank"):
             tr = terminalreporter
-            tr._tw.sep("=", "pytest-ranking summary info")
+            tr._tw.sep("=", "pytest-ranked-selection summary info")
             for k, v in self.log.items():
                 tr._tw.line(f"{k}: {v}")
         pass
@@ -389,7 +387,7 @@ def compute_test_features(
         last_durations[nodeid] = round(duration, 3)
     config.cache.set(key, last_durations)
 
-    # Get the number of runs since its last failure per test.
+    # Get the number of runs since its last failure per test.     => isso poderia ir pra outra função não?
     key = os.path.join(DATA_DIR, "num_runs_since_fail")
     num_runs_since_fail = config.cache.get(key, {})
     for report in test_reports:

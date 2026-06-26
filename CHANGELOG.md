@@ -1,6 +1,11 @@
 
 # Changelog
 
+0.4.0 (2026-06-25)
+----
+
+* Remove Similar Changed Path method
+
 0.3.3 (2024-04-08)
 ----
 
