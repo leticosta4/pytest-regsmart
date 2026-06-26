@@ -64,7 +64,7 @@ setup(
     ],
     entry_points={
         'pytest11': [
-            'pytest_ranked_selection = pytest_ranked_selection.plugin',
+            'pytest_ranking = pytest_ranking.plugin',
         ],
     },
 )

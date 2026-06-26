@@ -49,18 +49,6 @@ test_class_one = \
     """
 
 
-source_method_one = \
-    """
-    print("source_method_one")
-    """
-
-
-source_class_one = \
-    """
-    print("source_method_one")
-    """
-
-
 test_put_one = \
     """
     import pytest
@@ -133,10 +121,9 @@ def test_faster_test_first(mytester):
     out.assert_outcomes(passed=4, failed=2)
 
     # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=1-0-0"]
+    args = ["-v", "--rank", "--rank-weight=1-0"]
     out = mytester.runpytest(*args)
 
-    # assert outcome to be the same as if no rtp
     out.assert_outcomes(passed=4, failed=2)
     # assert faster tests are run first
     out.stdout.fnmatch_lines(
@@ -165,7 +152,7 @@ def test_recent_fail_first(mytester):
     out.assert_outcomes(passed=4, failed=2)
 
     # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=0-1-0"]
+    args = ["-v", "--rank", "--rank-weight=0-1"]
     out = mytester.runpytest(*args)
 
     # assert outcome to be the same as if no rtp
@@ -185,22 +172,19 @@ def test_recent_fail_first(mytester):
 
 
 def test_550_weight(mytester):
-    """--rank-weight=.5-.5-0, run recently failed and faster tests first"""
+    """--rank-weight=5-5, run recently failed and faster tests first"""
     mytester.makepyfile(
         test_method_one=test_method_one,
         test_class_one=test_class_one,
     )
 
-    # Run without RTP.
     args = ["-v"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=5-5-0"]
+    args = ["-v", "--rank", "--rank-weight=5-5"]
     out = mytester.runpytest(*args)
 
-    # assert outcome to be the same as if no rtp
     out.assert_outcomes(passed=4, failed=2)
     out.stdout.fnmatch_lines(
         [
@@ -214,146 +198,6 @@ def test_550_weight(mytester):
         consecutive=True
     )
     pass
-
-
-def test_001_028_weight(mytester):
-    """run failed tests more related to code change first"""
-    mytester.makepyfile(
-        test_method_one=test_method_one,
-        test_class_one=test_class_one,
-    )
-
-    # Run without RTP.
-    args = ["-v"]
-    out = mytester.runpytest(*args)
-    out.assert_outcomes(passed=4, failed=2)
-
-    # Run with RTP.
-    args = ["-v", "--rank"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    out.stdout.fnmatch_lines(
-        [
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_method_one.py::test_medium PASSED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-            "test_method_one.py::test_slow PASSED",
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-        ],
-        consecutive=True
-    )
-
-    mytester.makepyfile(source_method_one=source_method_one)
-    # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=0-0-1"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    # assert tests more related to the change are run first
-    out.stdout.fnmatch_lines(
-        [
-            "test_method_one.py::test_slow PASSED",
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_method_one.py::test_medium PASSED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-        ],
-        consecutive=True
-    )
-
-    mytester.makepyfile(source_class_one=source_class_one)
-    # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=0-2-8"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    out.stdout.fnmatch_lines(
-        [
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_method_one.py::test_slow PASSED",
-            "test_method_one.py::test_medium PASSED",
-        ],
-        consecutive=True
-    )
-
-
-def test_208_093_weight(mytester):
-    """run faster tests more related to code change first"""
-    mytester.makepyfile(
-        test_method_one=test_method_one,
-        test_class_one=test_class_one,
-    )
-
-    # Run without RTP.
-    args = ["-v"]
-    out = mytester.runpytest(*args)
-    out.assert_outcomes(passed=4, failed=2)
-
-    # Run with RTP.
-    args = ["-v", "--rank"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    out.stdout.fnmatch_lines(
-        [
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_method_one.py::test_medium PASSED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-            "test_method_one.py::test_slow PASSED",
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-        ],
-        consecutive=True
-    )
-
-    mytester.makepyfile(source_method_one=source_method_one)
-    # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=.2-0-.8"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    # assert tests more related to the change are run first
-    out.stdout.fnmatch_lines(
-        [
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_method_one.py::test_medium PASSED",
-            "test_method_one.py::test_slow PASSED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-        ],
-        consecutive=True
-    )
-
-    mytester.makepyfile(source_class_one=source_class_one)
-    # Run with RTP.
-    args = ["-v", "--rank", "--rank-weight=0-9-3"]
-    out = mytester.runpytest(*args)
-
-    # assert outcome to be the same as if no rtp
-    out.assert_outcomes(passed=4, failed=2)
-    out.stdout.fnmatch_lines(
-        [
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
-            "test_method_one.py::test_fast_fail FAILED",
-            "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_class_one.py::TestClassSample::test_medium PASSED",
-            "test_method_one.py::test_slow PASSED",
-            "test_method_one.py::test_medium PASSED",
-        ],
-        consecutive=True
-    )
 
 
 def test_logging(mytester):
@@ -371,13 +215,11 @@ def test_logging(mytester):
         "Using --rank-level",
         "Using --rank-hist-len",
         "Using --rank-seed",
-        "Number of changed Python files",
-        "Time to compute test-change similarity (s)",
         "Time to reorder tests (s)",
         "Time to collect test features (s)",
     )
 
-    header = "= pytest-ranking summary info ="
+    header = "= pytest-ranked-selection summary info ="
     assert len([x for x in out.outlines if header in x]) == 0
     assert len([x for x in out.outlines if x.startswith(log_text)]) == 0
 
@@ -386,7 +228,7 @@ def test_logging(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=2, failed=1)
     # Should log everything.
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 8
+    assert len([x for x in out.outlines if x.startswith(log_text)]) == 6
 
 
 def test_invalid_weight(mytester):
@@ -422,8 +264,6 @@ def test_random_order(mytester):
         "Using --rank-level",
         "Using --rank-hist-len",
         "Using --rank-seed",
-        "Number of changed Python files",
-        "Time to compute test-change similarity (s)",
         "Time to reorder tests (s)",
         "Time to collect test features (s)",
     )
@@ -434,10 +274,10 @@ def test_random_order(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
     # Should log everything.
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 8
+    assert len([x for x in out.outlines if x.startswith(log_text)]) == 6
 
     # Run with default seed.
-    args = ["-v", "--rank", "--rank-weight=0-0-0"]
+    args = ["-v", "--rank", "--rank-weight=0-0"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
     log_text = (
@@ -447,7 +287,7 @@ def test_random_order(mytester):
     test_lines_default1 = [x for x in out.outlines if "::" in x]
 
     # Run with specific seed.
-    args = ["-v", "--rank", "--rank-weight=0.0-0.0-0.0", "--rank-seed=8"]
+    args = ["-v", "--rank", "--rank-weight=0.0-0.0", "--rank-seed=8"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
     log_text = (
@@ -457,7 +297,7 @@ def test_random_order(mytester):
     test_lines_1 = [x for x in out.outlines if "::" in x]
 
     # Run with specific seed.
-    args = ["-v", "--rank", "--rank-weight=0-0-0", "--rank-seed=16"]
+    args = ["-v", "--rank", "--rank-weight=0-0", "--rank-seed=16"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
     log_text = (
@@ -476,7 +316,7 @@ def test_xdist(mytester):
         test_put_one=test_put_one,
     )
 
-    args = ["-v", "--rank", "-n", "auto", "--rank-weight=0-0-0"]
+    args = ["-v", "--rank", "-n", "auto", "--rank-weight=0-0"]
     out = mytester.runpytest(*args)
     assert len([x for x in out.outlines if x.startswith("ERROR")]) == 0
     pass
@@ -942,7 +782,7 @@ def test_replay_with_random(mytester):
         "-v",
         "--rank",
         "--rank-replay=replay_order.txt",
-        "--rank-weight=0-0-0"
+        "--rank-weight=0-0"
     ]
     out = mytester.runpytest(*args)
     error_msg = "--rank-replay cannot be used together with random order."

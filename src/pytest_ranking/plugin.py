@@ -252,12 +252,6 @@ class RTPRunner:
         """Run test prioritization algorithm."""
         # Get pytest default order.
         init_order = {item.nodeid: i for i, item in enumerate(items)}
-        # Load code change features.
-        self.chgtracker.compute_test_suite_similarity(items)
-        num_delta_file = self.chgtracker.num_delta_files
-        compute_time = self.chgtracker.runtime
-        self.log["Number of changed Python files"] = num_delta_file
-        self.log["Time to compute test-change similarity (s)"] = compute_time
 
         # Start reordering.
         start_time = time.time()
