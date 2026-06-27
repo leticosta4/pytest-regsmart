@@ -14,14 +14,14 @@ def read(fname):
 
 
 setup(
-    name='pytest-ranked-selection',
+    name='pytest-regsmart',
     version='0.3.4',
     author='leticosta4',
     author_email='leticiacostaoa@gmail.com',
     maintainer='leticosta4',
     maintainer_email='leticiacostaoa@gmail.com',
     license='MIT',
-    url='https://github.com/leticosta4/pytest-ranked-selection',
+    url='https://github.com/leticosta4/pytest-regsmart',
     description='A Pytest plugin for faster fault detection'
         + ' via regression test prioritization and selection.',
     long_description=read('README.md'),

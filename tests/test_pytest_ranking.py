@@ -219,7 +219,7 @@ def test_logging(mytester):
         "Time to collect test features (s)",
     )
 
-    header = "= pytest-ranked-selection summary info ="
+    header = "= pytest-regsmart summary info ="
     assert len([x for x in out.outlines if header in x]) == 0
     assert len([x for x in out.outlines if x.startswith(log_text)]) == 0
 

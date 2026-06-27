@@ -324,7 +324,7 @@ class RTPRunner:
         """Report plugin runtime when it is enabled."""
         if self.config.getoption("--rank"):
             tr = terminalreporter
-            tr._tw.sep("=", "pytest-ranked-selection summary info")
+            tr._tw.sep("=", "pytest-regsmart summary info")
             for k, v in self.log.items():
                 tr._tw.line(f"{k}: {v}")
         pass
