@@ -14,16 +14,16 @@ def read(fname):
 
 
 setup(
-    name='pytest-ranking',
+    name='pytest-regsmart',
     version='0.3.4',
-    author='softwareTestingResearch',
-    author_email='testingresearch4all@gmail.com',
-    maintainer='softwareTestingResearch',
-    maintainer_email='testingresearch4all@gmail.com',
+    author='leticosta4',
+    author_email='leticiacostaoa@gmail.com',
+    maintainer='leticosta4',
+    maintainer_email='leticiacostaoa@gmail.com',
     license='MIT',
-    url='https://github.com/softwareTestingResearch/pytest-ranking',
+    url='https://github.com/leticosta4/pytest-regsmart',
     description='A Pytest plugin for faster fault detection'
-        + ' via regression test prioritization',
+        + ' via regression test prioritization and selection.',
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
     packages=find_packages('src'),
@@ -59,6 +59,7 @@ setup(
         'software testing',
         'regression testing',
         'test prioritization',
+        'test selection',
         'pytest',
     ],
     entry_points={

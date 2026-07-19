@@ -3,4 +3,4 @@
 pip install .
 pytest -xv
 
-pip uninstall pytest-ranking
+pip uninstall pytest-regsmart
