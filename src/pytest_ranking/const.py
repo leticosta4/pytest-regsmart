@@ -22,7 +22,5 @@ class LEVEL(str, Enum):
     PUT = "put"
     FUNCTION = "function"
     MODULE = "module"
-    DIR = "dir"
-
 
 DEFAULT_LEVEL = LEVEL.PUT

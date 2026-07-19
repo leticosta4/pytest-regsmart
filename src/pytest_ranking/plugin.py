@@ -105,7 +105,6 @@ def level_type(string: str) -> str:
             "Invalid input for `--rank-level`."
             + " Please run `pytest --help` for instruction."
         )
-    #talvez add aqui a condição de "nivel de granularidade nao valido por causa do conjunto de testes selecionado"
 
 
 def replay_type(string: str) -> str:

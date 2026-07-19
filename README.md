@@ -73,7 +73,7 @@ The default value is ``1-0-0``, which only prioritizes faster tests.
 
 ### Optimizing test prioritization levels
 
-You can set at which level of your test suite will be reordered, by passing the optional `--rank-level` flag in one of these values: `put`, `function`, `module`, `dir`. For example:
+You can set at which level of your test suite will be reordered, by passing the optional `--rank-level` flag in one of these values: `put`, `function`, `module`. For example:
 
 ```bash
 pytest --rank --rank-level=function
@@ -84,8 +84,7 @@ pytest --rank --rank-level=function
     - `put` reorders the each PUT and re-arranges their order based on their assigned priority scores
     - `function` reorders each test function, parametrized values of a test function follow their default order
     - `module` reorders each test file, all tests in the test file follow their default order
-    - `dir` reorders each test directory, all tests within each directory follow their default order
-
+7
 The default value is `put`.
 
 
