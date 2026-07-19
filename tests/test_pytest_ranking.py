@@ -235,7 +235,7 @@ def test_invalid_weight(mytester):
     mytester.makepyfile(
         test_method_one=test_method_one
     )
-    args = ["-v", "--rank", "--rank-weight=1-3"]
+    args = ["-v", "--rank", "--rank-weight=1-3-2"]
     out = mytester.runpytest(*args)
     error_msg = "pytest: error: argument --rank-weight:" \
         + " Cannot parse input for `--rank-weight`."
