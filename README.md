@@ -173,7 +173,41 @@ A 5-minute demo video with walkthrough of `pytest-ranking`: [YouTube link](https
 
 ## Contributing
 
-Contributions are very welcome. Tests can be run with [tox](https://tox.readthedocs.io/en/latest/).
+Contributions are very welcome.
+
+### Local development
+
+Install the package in editable mode:
+
+```bash
+pip install -e .
+```
+
+### Running tests
+
+During development, to quickly validate your changes:
+
+```bash
+pytest -xv tests/
+```
+
+To test across all supported Python versions and ensure compatibility before publishing, use [tox](https://tox.readthedocs.io/en/latest/):
+
+```bash
+tox
+```
+
+To run a specific environment only (e.g. Python 3.12):
+
+```bash
+tox -e py312
+```
+
+To pass extra arguments to pytest via tox:
+
+```bash
+tox -- -k "test_name"
+```
 
 
 ## License
