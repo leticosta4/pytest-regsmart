@@ -3,6 +3,11 @@
 
 ## pytest-regsmart
 
+0.3.0 (2026-07-20)
+----
+
+* Migrate package manager to uv
+
 0.2.0 (2026-07-19)
 ----
 

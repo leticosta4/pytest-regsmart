@@ -1,6 +1,4 @@
 #!/bin/bash
 
-pip install .
-pytest -xv
-
-pip uninstall pytest-regsmart
+uv sync
+uv run pytest -xv "$@"
