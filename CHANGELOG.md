@@ -6,6 +6,8 @@
 0.2.0 (2026-07-19)
 ----
 
+* Rename whole package name to `pytest-regsmart`
+* Refactor ranking module internals (modularization)
 * Remove directory-level granularity (`--rank-level=dir`)
 
 0.1.0 (2026-06-25)

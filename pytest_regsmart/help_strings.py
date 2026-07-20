@@ -36,6 +36,6 @@ Default value is PUT.
 
 REPLAY_HELP = textwrap.dedent("""
 Provide a text file where each line is a test ID.
-pytest-ranking will run tests with the order defined in the file.  
+pytest-regsmart will run tests with the order defined in the file.  
 Default value is None.
 """)  ## ver ainda o que fazer sobre isso
