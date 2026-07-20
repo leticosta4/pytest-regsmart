@@ -24,7 +24,7 @@ from .monitor import Monitor
 
 
 def pytest_addoption(parser: Parser) -> None:
-    group = parser.getgroup("rank", "pytest-ranking")
+    group = parser.getgroup("rank", "pytest-regsmart")
     group._addoption(
         "--rank",
         action="store_true",

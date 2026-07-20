@@ -2,9 +2,6 @@
 
 import codecs
 import os
-from glob import glob
-from os.path import basename, splitext
-
 from setuptools import find_packages, setup
 
 
@@ -26,9 +23,7 @@ setup(
         + ' via regression test prioritization and selection.',
     long_description=read('README.md'),
     long_description_content_type='text/markdown',
-    packages=find_packages('src'),
-    package_dir={'': 'src'},
-    py_modules=[splitext(basename(path))[0] for path in glob('src/*.py')],
+    packages=find_packages(),
     python_requires='>=3.5',
     install_requires=[
         'pytest>=7.4.3',
@@ -64,7 +59,7 @@ setup(
     ],
     entry_points={
         'pytest11': [
-            'pytest_ranking = pytest_ranking.plugin',
+            'pytest_regsmart = pytest_regsmart.plugin',
         ],
     },
 )
