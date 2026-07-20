@@ -1,11 +1,30 @@
 
 # Changelog
 
-0.4.0 (2026-06-25)
+## pytest-regsmart
+
+0.2.0 (2026-07-19)
 ----
 
+* Rename whole package name to `pytest-regsmart`
 * Refactor ranking module internals (modularization)
-* Remove Similar Changed Path method
+* Remove directory-level granularity (`--rank-level=dir`)
+
+0.1.0 (2026-06-25)
+----
+
+* Fork of pytest-ranking (based on PyPI release 0.3.4)
+* Rename plugin to `pytest-regsmart`
+* Remove Similar Changed Path method (`--rank-weight=0-0-1`)
+
+---
+
+## Inherited history (pytest-ranking)
+
+0.3.4 (2025-04-09)
+----
+
+* Published version at PyPI (https://pypi.org/project/pytest-ranking/0.3.4/#history)
 
 0.3.3 (2024-04-08)
 ----
