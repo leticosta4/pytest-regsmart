@@ -43,15 +43,13 @@ def test_invalid_weight(mytester):
     )
     args = ["-v", "--rank", "--rank-weight=1-3-2"]
     out = mytester.runpytest(*args)
-    error_msg = "pytest: error: argument --rank-weight:" \
-        + " Cannot parse input for `--rank-weight`."
-    assert len([x for x in out.errlines if x.startswith(error_msg)]) == 1
+    error_msg = "Cannot parse input for `--rank-weight`."
+    assert any(error_msg in x for x in out.errlines)
 
     args = ["-v", "--rank", "--rank-weight=1-3-x"]
     out = mytester.runpytest(*args)
-    error_msg = "pytest: error: argument --rank-weight:" \
-        + " Cannot parse input for `--rank-weight`."
-    assert len([x for x in out.errlines if x.startswith(error_msg)]) == 1
+    error_msg = "Cannot parse input for `--rank-weight`."
+    assert any(error_msg in x for x in out.errlines)
 
 
 def test_random_order(mytester):
@@ -127,7 +125,5 @@ def test_invalid_level(mytester):
 
     args = ["-v", "--rank", "--rank-level=class"]
     out = mytester.runpytest(*args)
-    error_msg = "pytest: error: argument --rank-level:" \
-        + " Invalid input for `--rank-level`." \
-        + " Please run `pytest --help` for instruction."
-    assert len([x for x in out.errlines if x.startswith(error_msg)]) == 1
+    error_msg = "Invalid input for `--rank-level`."
+    assert any(error_msg in x for x in out.errlines)

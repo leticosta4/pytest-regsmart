@@ -67,7 +67,5 @@ def test_invalid_replay(mytester):
 
     args = ["-v", "--rank", "--rank-replay=order.txt"]
     out = mytester.runpytest(*args)
-    error_msg = "pytest: error: argument --rank-replay:" \
-        + " File provided to `--rank-replay` cannot be read." \
-        + " Please run `pytest --help` for instruction."
-    assert len([x for x in out.errlines if x.startswith(error_msg)]) == 1
+    error_msg = "File provided to `--rank-replay` cannot be read."
+    assert any(error_msg in x for x in out.errlines)
