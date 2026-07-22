@@ -30,4 +30,4 @@ def pytest_terminal_summary(
     tr = terminalreporter
     tr._tw.sep("=", "pytest-regsmart summary info")
     for k, v in log_dict.items():
-        tr._tw.line(f"{k}: {v}")
+        tr._tw.line(f"{k}: {v*1000:.2f} ms ({v} s)")
