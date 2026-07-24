@@ -77,7 +77,7 @@ def pytest_addoption(parser: Parser) -> None:
     parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
 
 
-class RTPRunner:
+class PluginRunner:
     """Plugin class."""
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -136,5 +136,5 @@ class RTPRunner:
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config: Config) -> None:
-    runner = RTPRunner(config)
+    runner = PluginRunner(config)
     config.pluginmanager.register(runner)
