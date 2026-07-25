@@ -6,8 +6,12 @@ from _pytest.terminal import TerminalReporter
 
 def pytest_report_header(config: Config) -> str | None:
     """Report plugin configurations before test session starts."""
-    if not config.getoption("--rank"):
+    if not config.getoption("--regsmart"):
         return None
+
+    if config.getoption("--no-rank"):
+        return "Using --no-rank (RTP disabled)."
+    
     weight = config.getoption("--rank-weight")
     replay = config.getoption("--rank-replay")
     level = config.getoption("--rank-level")

@@ -39,3 +39,8 @@ Provide a text file where each line is a test ID.
 pytest-regsmart will run tests with the order defined in the file.  
 Default value is None.
 """)  ## ver ainda o que fazer sobre isso
+
+NO_RANK_HELP = textwrap.dedent("""
+Boolean flag to disable ranking option (RTP); cannot be used with other ranking flags.
+When selected, tests will run in pytest default order.
+""") #depois preciso adaptar esse final pra usar a RTS

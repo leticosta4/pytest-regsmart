@@ -18,17 +18,24 @@ from . import reporter as reporter_mod
 from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT
 from .help_strings import (
     HIST_LEN_HELP, LEVEL_HELP, PLUGIN_HELP,
-    REPLAY_HELP, SEED_HELP, WEIGHT_HELP,
+    REPLAY_HELP, SEED_HELP, WEIGHT_HELP, NO_RANK_HELP
 )
 from .monitor import Monitor
 
 
 def pytest_addoption(parser: Parser) -> None:
-    group = parser.getgroup("rank", "pytest-regsmart")
+    group = parser.getgroup("regsmart", "pytest-regsmart")
     group._addoption(
-        "--rank",
+        "--regsmart", #era o antigo --rank que ativava o default basico do pytest-ranking
         action="store_true",
         help=PLUGIN_HELP)
+    
+    group._addoption(
+        "--no-rank",
+        action="store_true",
+        default=False,
+        help=NO_RANK_HELP,
+        dest="no_rank") #talvez nao precise
 
     group._addoption(
         "--rank-level",
@@ -70,6 +77,7 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_SEED,
         help=SEED_HELP)
 
+    parser.addini("no_rank", NO_RANK_HELP, default=False)
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
     parser.addini("rank_level", LEVEL_HELP, default=DEFAULT_LEVEL)
@@ -84,6 +92,7 @@ class PluginRunner:
         self.log = {}
         self.monitor = Monitor()
 
+        self.no_rank = args.parse_no_rank(config)
         self.weights = args.parse_rtp_weights(config)
         self.level = args.parse_rtp_level(config)
         self.replay_file = args.parse_replay(config)
@@ -93,18 +102,23 @@ class PluginRunner:
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
-        if not self.config.getoption("--rank"):
+        if not self.config.getoption("--regsmart"):
             return
+
         if self.replay_file and self.weights == [0, 0]:
-            raise argparse.ArgumentTypeError(
+            raise argparse.ArgumentTypeError( #ou usage error
                 "--rank-replay cannot be used together with random order."
             )
-        ranker.run_rtp(
-            items, self.level, self.weights,
-            self.replay_file, self.seed, self.log,
-            lambda feature_name, items, reverse:
-                extractor.load_feature(self.config, feature_name, items, reverse),
-        )
+        
+        #acho que o selector vai vir aqui
+
+        if not self.no_rank:
+            ranker.run_rtp(
+                items, self.level, self.weights,
+                self.replay_file, self.seed, self.log,
+                lambda feature_name, items, reverse:
+                    extractor.load_feature(self.config, feature_name, items, reverse),
+            )
 
 
     def pytest_runtest_logreport(self, report: TestReport) -> None:
@@ -130,11 +144,18 @@ class PluginRunner:
             terminalreporter: TerminalReporter,
             exitstatus: int,
             config: Config) -> None:
-        if self.config.getoption("--rank"):
+        if self.config.getoption("--regsmart"):
             reporter_mod.pytest_terminal_summary(terminalreporter, self.log)
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config: Config) -> None:
+    if config.getoption("--regsmart") and config.getoption("--no-rank"):
+        for arg in config.invocation_params.args:
+            if arg.startswith("--rank-"):
+                raise pytest.UsageError(
+                    "--no-rank cannot be used together with other ranking flags. It excludes RTP."
+                )
+
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)

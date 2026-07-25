@@ -22,7 +22,7 @@ def test_put_level_ranking(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=13, failed=2)
 
-    args = ["-v", "--rank", "--rank-level=put"]
+    args = ["-v", "--regsmart", "--rank-level=put"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=13, failed=2)
@@ -59,7 +59,7 @@ def test_function_level_ranking(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=9, failed=2)
 
-    args = ["-v", "--rank", "--rank-level=function"]
+    args = ["-v", "--regsmart", "--rank-level=function"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=9, failed=2)
@@ -92,7 +92,7 @@ def test_module_level_ranking(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=9, failed=2)
 
-    args = ["-v", "--rank", "--rank-level=module"]
+    args = ["-v", "--regsmart", "--rank-level=module"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=9, failed=2)
@@ -126,7 +126,7 @@ def test_function_level_ranking_with_duplicate_methods(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=11, failed=3)
 
-    args = ["-v", "--rank", "--rank-level=function"]
+    args = ["-v", "--regsmart", "--rank-level=function"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=11, failed=3)

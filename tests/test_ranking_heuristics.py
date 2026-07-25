@@ -13,7 +13,7 @@ def test_default(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--rank"]
+    args = ["-v", "--regsmart"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -40,7 +40,7 @@ def test_faster_test_first(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--rank", "--rank-weight=1-0"]
+    args = ["-v", "--regsmart", "--rank-weight=1-0"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -67,7 +67,7 @@ def test_recent_fail_first(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--rank", "--rank-weight=0-1"]
+    args = ["-v", "--regsmart", "--rank-weight=0-1"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -94,7 +94,7 @@ def test_550_weight(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--rank", "--rank-weight=5-5"]
+    args = ["-v", "--regsmart", "--rank-weight=5-5"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
