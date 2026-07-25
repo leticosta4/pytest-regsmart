@@ -23,7 +23,7 @@ Default value is 50 (must be integer).
 
 SEED_HELP = textwrap.dedent("""\
 Seed when running tests in random order.
-You can run random order via setting `--rank-weight=0-0-0`
+You can run random order via setting `--rank-weight=0-0`
 Default value is 0.
 """)
 
