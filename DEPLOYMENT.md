@@ -1,51 +1,51 @@
 # Deployment
 
-## Using pytest-ranking in fixed location
+## Using pytest-regsmart in fixed location
 
-If your CI runs different test builds in a fixed location, e.g., a project folder in specific machine, you can directly use `pytest-ranking` after installation without additional setup.
+If your CI runs different test builds in a fixed location, e.g., a project folder in specific machine, you can directly use `pytest-regsmart` after installation without additional setup.
 
-## Using pytest-ranking in Github Actions
+## Using pytest-regsmart in Github Actions
 
 If your CI workflow always starts a new virtual machine to run a test build, you need to set up the CI to be able to pass `pytest` cache data across test builds.
 Here, we use GitHub Actions as an example.
 
-### Add pytest-ranking to project dependency
+### Add pytest-regsmart to project dependency
 
 
-You can add `pytest-ranking` as a dependency by adding a installation job before the job that runs `pytest ...` (a job is often specified by `-name: `) in the workflow file:
+You can add `pytest-regsmart` as a dependency by adding a installation job before the job that runs `pytest ...` (a job is often specified by `-name: `) in the workflow file:
 
 ```yml
-    - name: Install pytest-ranking related
-      run: pip install pytest-ranking
+    - name: Install pytest-regsmart related
+      run: pip install pytest-regsmart
 ```
 
-Alternatively, depending on where the forked project puts its dependency, e.g., can be in `setup.py`, `pyproejct.toml`, you can also add the `pytest-ranking` to the build/test dependency, but best not to specify version.
+Alternatively, depending on where the forked project puts its dependency, e.g., can be in `setup.py`, `pyproejct.toml`, you can also add the `pytest-regsmart` to the build/test dependency, but best not to specify version.
 
 
 #### If the project uses `Tox`
 
-Add `pytest-ranking` to the `deps` of `[testenv]` in `./tox.ini`:
+Add `pytest-regsmart` to the `deps` of `[testenv]` in `./tox.ini`:
 ```ini
 [testenv]
 deps =
   ; ...
-  pytest-ranking
+  pytest-regsmart
   pytest-json-report
 ```
 
 
 ### Setup pytest_cache
 
-Before the job in the workflow file that runs the `pytest ...` but after the `pytest-ranking` installation job, add the job that restores cache from the latest run if such run exists:
+Before the job in the workflow file that runs the `pytest ...` but after the `pytest-regsmart` installation job, add the job that restores cache from the latest run if such run exists:
 
 ```yml
-    - name: Restore pytest-ranking cache
-      id: restore-pytest-ranking-cache
+    - name: Restore pytest-regsmart cache
+      id: restore-pytest-regsmart-cache
       if: always()
       uses: actions/cache/restore@v4
       with:
         path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranking_data
-        key: pytest-ranking-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}
+        key: pytest-regsmart-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}
     # --------below is the job for running pytest
     -name: pytest
         ...
@@ -57,13 +57,13 @@ And after the job that runs `pytest ...` command, add the job that caches result
     -name: pytest
         ...
     # --------above is the job for running pytest
-    - name: Save pytest-ranking cache
-      id: save-pytest-ranking-cache
+    - name: Save pytest-regsmart cache
+      id: save-pytest-regsmart-cache
       if: always()
       uses: actions/cache/save@v4
       with:
         path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranking_data
-        key: pytest-ranking-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}-${{ github.run_id }}
+        key: pytest-regsmart-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}-${{ github.run_id }}
 ```
 
 #### If the project uses `Tox`

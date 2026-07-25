@@ -20,13 +20,13 @@ pip install pytest-regsmart
 ## Usage
 
 Pytest will automatically find the plugin and use it when you run ``pytest``.
-You can run `pytest-regsmart` with its default configuration, which runs faster tests first by passing the ``--rank`` option:
+You can run `pytest-regsmart` with its default configuration, which runs faster tests first by passing the ``--regsmart`` option:
 
 ```bash
-pytest --rank
+pytest --regsmart
 ```
 
-Before the test run starts, if `--rank` is passed, the terminal header will report `pytest-regsmart`'s configuration of this run, for example:
+Before the test run starts, if `--regsmart` is passed, the terminal header will report `pytest-regsmart`'s configuration of this run, for example:
 
 ```
 Using --rank-weight=1-0
@@ -44,12 +44,22 @@ Time to reorder tests (s): 0.0003600120544433594
 Time to collect test features (s): 0.0004608631134033203
 ```
 
+### Disabling ranking (RTP)
+
+You can disable the regression test prioritization while keeping the plugin active with the `--no-rank` flag:
+
+```bash
+pytest --regsmart --no-rank
+```
+
+This is useful when you want to collect test data without reordering tests.
+
 ### Optimizing test prioritization heuristics
 
 You can set the weights of different test prioritization heuristics by passing the optional `--rank-weight` flag with formatted values:
 
 ```bash
-pytest --rank --rank-weight=0-1
+pytest --regsmart --rank-weight=0-1
 ```
 
 - Weights are separated by ``-``
@@ -66,7 +76,7 @@ The default value is ``1-0``, which only prioritizes faster tests.
 You can set at which level of your test suite will be reordered, by passing the optional `--rank-level` flag in one of these values: `put`, `function`, `module`. For example:
 
 ```bash
-pytest --rank --rank-level=function
+pytest --regsmart --rank-level=function
 ```
 
 - The smallest test item that can be reordered in pytest test suite is [parametrized unit test](https://docs.pytest.org/en/7.1.x/example/parametrize.html) (PUT)
@@ -82,7 +92,7 @@ The default value is `put`.
 You can run/replay tests in a specific order by listing the to-be-run test IDs in a text file, where each line is a test ID, and pass the file path to the optional `--rank-replay` flag:
 
 ```bash
-pytest --rank --rank-replay=replay_order.txt
+pytest --regsmart --rank-replay=replay_order.txt
 ```
 
 ### Tracking data from historical runs
@@ -90,7 +100,7 @@ pytest --rank --rank-replay=replay_order.txt
 You can also set the maximum value of *the number test runs since a test's last failure* that could be recorded for each test, by passing the optional `--rank-hist-len` flag:
 
 ```bash
-pytest --rank --rank-hist-len=30
+pytest --regsmart --rank-hist-len=30
 ```
 
 The default value is 50.
@@ -103,7 +113,7 @@ You can also set the seed used when running tests in random order, via setting a
 For example, the command below runs tests randomly with seed `1234`:
 
 ```bash
-pytest --rank --rank-weight=0-0 --rank-seed=1234
+pytest --regsmart --rank-weight=0-0 --rank-seed=1234
 ```
 
 By default, `pytest-regsmart` uses `0` as the seed.
@@ -116,7 +126,7 @@ For example, create `pytest.ini` in your codebase root folder as such:
 
 ```ini
 [pytest]
-addopts = --rank --rank-weight=0-1 --rank-hist-len=30
+addopts = --regsmart --rank-weight=0-1 --rank-hist-len=30
 ```
 
 and run `pytest` on the command line.
@@ -129,11 +139,11 @@ rank_weight=0-1
 rank_hist_len=30
 ```
 
-and run `pytest --rank` on the command line.
+and run `pytest --regsmart` on the command line.
 
 ## Deployment (old)
 
-`pytest-ranking` is easy to deploy into CI workflow, please see [deployment](./docs/DEPLOYMENT.md).
+`pytest-regsmart` is easy to deploy into CI workflow, please see [deployment](./docs/DEPLOYMENT.md).
 
 ## Local development
 
@@ -177,13 +187,13 @@ Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.or
 ## Reference
 
 #### Demo video
-A 5-minute demo video with walkthrough of `pytest-ranking`: [YouTube link](https://youtu.be/SrnkgTs3uok?feature=shared)
+A 5-minute demo video with walkthrough of `pytest-regsmart`: [YouTube link](https://youtu.be/SrnkgTs3uok?feature=shared)
 
 #### Bibtex citation
 
 ```
 @inproceedings{cheng2025pytest,
-  title={{pytest-ranking: A Regression Test Prioritization Tool for Python}},
+  title={{pytest-regsmart: A Regression Test Prioritization Tool for Python}},
   author={Cheng, Runxiang and Ke, Kaiyao and Marinov, Darko},
   booktitle={Companion Proceedings of the 33rd ACM International Conference on the Foundations of Software Engineering},
   year={2025},
