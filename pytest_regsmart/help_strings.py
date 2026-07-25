@@ -41,5 +41,6 @@ Default value is None.
 """)  ## ver ainda o que fazer sobre isso
 
 NO_RANK_HELP = textwrap.dedent("""
-Disable ranking option (RTP).
-""")
+Boolean flag to disable ranking option (RTP); cannot be used with other ranking options (--rank-weights & --rank-replay).
+When selected, tests will run in pytest default order.
+""") #depois preciso adaptar esse final pra usar a RTS
