@@ -105,13 +105,6 @@ class PluginRunner:
         if not self.config.getoption("--regsmart"):
             return
 
-        # if self.no_rank:
-        #      for arg in self.config.invocation_params.args:
-        #         if arg.startswith("--rank-"):
-        #             raise pytest.UsageError(
-        #                 "--no-rank cannot be used together with other ranking flags. It excludes RTP."
-        #            )
-
         if self.replay_file and self.weights == [0, 0]:
             raise argparse.ArgumentTypeError( #ou usage error
                 "--rank-replay cannot be used together with random order."
