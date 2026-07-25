@@ -32,7 +32,8 @@ def pytest_addoption(parser: Parser) -> None:
     
     group._addoption(
         "--no-rank",
-        action="store_false",
+        action="store_true",
+        default=False,
         help=NO_RANK_HELP,
         dest="no_rank") #talvez nao precise
 
@@ -76,12 +77,12 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_SEED,
         help=SEED_HELP)
 
+    parser.addini("no_rank", NO_RANK_HELP, default=False)
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
     parser.addini("rank_level", LEVEL_HELP, default=DEFAULT_LEVEL)
     parser.addini("rank_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
     parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
-    parser.addini("no_rank", NO_RANK_HELP, default=False)
 
 
 class PluginRunner:
@@ -91,6 +92,7 @@ class PluginRunner:
         self.log = {}
         self.monitor = Monitor()
 
+        self.no_rank = args.parse_no_rank(config)
         self.weights = args.parse_rtp_weights(config)
         self.level = args.parse_rtp_level(config)
         self.replay_file = args.parse_replay(config)
@@ -106,12 +108,14 @@ class PluginRunner:
             raise argparse.ArgumentTypeError(
                 "--rank-replay cannot be used together with random order."
             )
-        ranker.run_rtp(
-            items, self.level, self.weights,
-            self.replay_file, self.seed, self.log,
-            lambda feature_name, items, reverse:
-                extractor.load_feature(self.config, feature_name, items, reverse),
-        )
+        #acho que o selector vai vir aqui
+        if not self.no_rank:
+            ranker.run_rtp(
+                items, self.level, self.weights,
+                self.replay_file, self.seed, self.log,
+                lambda feature_name, items, reverse:
+                    extractor.load_feature(self.config, feature_name, items, reverse),
+            )
 
 
     def pytest_runtest_logreport(self, report: TestReport) -> None:

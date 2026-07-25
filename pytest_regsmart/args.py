@@ -108,3 +108,11 @@ def parse_seed(config) -> int:
         ini_val = config.getini("rank_seed")
         rand_seed = ini_val if ini_val else rand_seed
     return int(rand_seed)
+
+def parse_no_rank(config) -> bool:
+    """Get no-rank option, non-default CLI overrides ini file input."""
+    no_rtp = config.getoption("--no-rank")
+    if not no_rtp:
+        ini_val = config.getini("no_rank")
+        no_rtp = ini_val if ini_val else no_rtp
+    return bool(no_rtp)
