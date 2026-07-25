@@ -105,9 +105,15 @@ class PluginRunner:
         if not self.config.getoption("--regsmart"):
             return
         
-        if self.no_rank and (self.weights != [0, 0] or self.replay_file):
+        if self.no_rank and (
+            self.config.getoption("--rank-weight") != DEFAULT_WEIGHT
+            or self.config.getoption("--rank-level") != DEFAULT_LEVEL.value
+            or self.config.getoption("--rank-replay") is not None
+            or self.config.getoption("--rank-hist-len") != DEFAULT_HIST_LEN
+            or self.config.getoption("--rank-seed") != DEFAULT_SEED
+        ): #refatorar isso depois urgwnremente
             raise argparse.ArgumentTypeError(
-                "--no-rank cannot be used together with other ranking options."
+                "--no-rank cannot be used together with other ranking flags. It excludes RTP."
             )
 
         if self.replay_file and self.weights == [0, 0]:
