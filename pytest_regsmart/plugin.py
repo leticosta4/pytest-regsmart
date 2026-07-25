@@ -104,6 +104,12 @@ class PluginRunner:
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if not self.config.getoption("--regsmart"):
             return
+        
+        if self.no_rank and (self.weights != [0, 0] or self.replay_file):
+            raise argparse.ArgumentTypeError(
+                "--no-rank cannot be used together with other ranking options."
+            )
+
         if self.replay_file and self.weights == [0, 0]:
             raise argparse.ArgumentTypeError(
                 "--rank-replay cannot be used together with random order."
