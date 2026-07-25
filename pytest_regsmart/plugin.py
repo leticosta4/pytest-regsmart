@@ -104,23 +104,21 @@ class PluginRunner:
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if not self.config.getoption("--regsmart"):
             return
-        
-        if self.no_rank and (
-            self.config.getoption("--rank-weight") != DEFAULT_WEIGHT
-            or self.config.getoption("--rank-level") != DEFAULT_LEVEL.value
-            or self.config.getoption("--rank-replay") is not None
-            or self.config.getoption("--rank-hist-len") != DEFAULT_HIST_LEN
-            or self.config.getoption("--rank-seed") != DEFAULT_SEED
-        ): #refatorar isso depois urgwnremente
-            raise argparse.ArgumentTypeError(
-                "--no-rank cannot be used together with other ranking flags. It excludes RTP."
-            )
+
+        # if self.no_rank:
+        #      for arg in self.config.invocation_params.args:
+        #         if arg.startswith("--rank-"):
+        #             raise pytest.UsageError(
+        #                 "--no-rank cannot be used together with other ranking flags. It excludes RTP."
+        #            )
 
         if self.replay_file and self.weights == [0, 0]:
-            raise argparse.ArgumentTypeError(
+            raise argparse.ArgumentTypeError( #ou usage error
                 "--rank-replay cannot be used together with random order."
             )
+        
         #acho que o selector vai vir aqui
+
         if not self.no_rank:
             ranker.run_rtp(
                 items, self.level, self.weights,
@@ -159,5 +157,12 @@ class PluginRunner:
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config: Config) -> None:
+    if config.getoption("--regsmart") and config.getoption("--no-rank"):
+        for arg in config.invocation_params.args:
+            if arg.startswith("--rank-"):
+                raise pytest.UsageError(
+                    "--no-rank cannot be used together with other ranking flags. It excludes RTP."
+                )
+
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)
