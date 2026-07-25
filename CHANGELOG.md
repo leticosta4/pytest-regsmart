@@ -3,6 +3,12 @@
 
 ## pytest-regsmart
 
+0.4.0 (2026-07-24)
+----
+
+* Add the `--no-rank` option to remove RTP, considering only the future RTS module
+* Rename activation flag from `--rank` to `--regsmart`
+
 0.3.0 (2026-07-20)
 ----
 
