@@ -14,7 +14,7 @@ def test_order_dependency_marker(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=8, failed=1, xfailed=1)
 
-    args = ["-v", "--rank"]
+    args = ["-v", "--regsmart"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=8, failed=1, xfailed=1)

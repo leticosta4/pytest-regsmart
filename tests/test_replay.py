@@ -22,7 +22,7 @@ def test_replay(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--rank", "--rank-replay=replay_order.txt"]
+    args = ["-v", "--regsmart", "--rank-replay=replay_order.txt"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -51,7 +51,7 @@ def test_replay_with_random(mytester):
 
     args = [
         "-v",
-        "--rank",
+        "--regsmart",
         "--rank-replay=replay_order.txt",
         "--rank-weight=0-0"
     ]
@@ -65,7 +65,7 @@ def test_invalid_replay(mytester):
         test_a_method=test_a_method,
     )
 
-    args = ["-v", "--rank", "--rank-replay=order.txt"]
+    args = ["-v", "--regsmart", "--rank-replay=order.txt"]
     out = mytester.runpytest(*args)
     error_msg = "File provided to `--rank-replay` cannot be read."
     assert any(error_msg in x for x in out.errlines)

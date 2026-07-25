@@ -39,3 +39,7 @@ Provide a text file where each line is a test ID.
 pytest-regsmart will run tests with the order defined in the file.  
 Default value is None.
 """)  ## ver ainda o que fazer sobre isso
+
+NO_RANK_HELP = textwrap.dedent("""
+Disable ranking option (RTP).
+""")

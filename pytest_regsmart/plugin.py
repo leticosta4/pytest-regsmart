@@ -18,17 +18,23 @@ from . import reporter as reporter_mod
 from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT
 from .help_strings import (
     HIST_LEN_HELP, LEVEL_HELP, PLUGIN_HELP,
-    REPLAY_HELP, SEED_HELP, WEIGHT_HELP,
+    REPLAY_HELP, SEED_HELP, WEIGHT_HELP, NO_RANK_HELP
 )
 from .monitor import Monitor
 
 
 def pytest_addoption(parser: Parser) -> None:
-    group = parser.getgroup("rank", "pytest-regsmart")
+    group = parser.getgroup("regsmart", "pytest-regsmart")
     group._addoption(
-        "--rank",
+        "--regsmart", #era o antigo --rank que ativava o default basico do pytest-ranking
         action="store_true",
         help=PLUGIN_HELP)
+    
+    group._addoption(
+        "--no-rank",
+        action="store_false",
+        help=NO_RANK_HELP,
+        dest="no_rank") #talvez nao precise
 
     group._addoption(
         "--rank-level",
@@ -75,6 +81,7 @@ def pytest_addoption(parser: Parser) -> None:
     parser.addini("rank_level", LEVEL_HELP, default=DEFAULT_LEVEL)
     parser.addini("rank_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
     parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
+    parser.addini("no_rank", NO_RANK_HELP, default=False)
 
 
 class PluginRunner:
@@ -93,7 +100,7 @@ class PluginRunner:
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
-        if not self.config.getoption("--rank"):
+        if not self.config.getoption("--regsmart"):
             return
         if self.replay_file and self.weights == [0, 0]:
             raise argparse.ArgumentTypeError(
@@ -130,7 +137,7 @@ class PluginRunner:
             terminalreporter: TerminalReporter,
             exitstatus: int,
             config: Config) -> None:
-        if self.config.getoption("--rank"):
+        if self.config.getoption("--regsmart"):
             reporter_mod.pytest_terminal_summary(terminalreporter, self.log)
 
 
