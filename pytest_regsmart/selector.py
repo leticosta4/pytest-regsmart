@@ -27,12 +27,15 @@ def get_dependency_graph():
     pass
 
 
-def get_affected_tests():
+def get_affected_tests(diff_result: DiffResult, short_graph) -> list[str]:
     pass
 
 
 def run_rts():
     """[wip] Orquestra a seleção..."""
+
+    diff_result = get_git_diff()
+
     pass
 
 #rodar o git diff pra ver a diferença
