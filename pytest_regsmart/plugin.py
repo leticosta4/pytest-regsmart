@@ -111,7 +111,7 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        selector.run_rts() #ainda nao implementado, mas vai ser chamado aqui
+        #selector.run_rts() #ainda nao implementado, mas vai ser chamado aqui
 
         if not self.no_rank:
             ranker.run_rtp( #tenho que ver como mudar essa assinatura para que o ranker receba somente os testes afetados, e nao todos os testes

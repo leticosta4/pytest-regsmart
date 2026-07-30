@@ -1,42 +1,41 @@
 from git import Repo
+from dataclasses import dataclass
 
 
-def get_git_diff(): #vai considerar sempre a branch atual e a branch base (main/master) - pelo menos por enquanto
-    # vou ter que ver se tem unstaged tb
-    # tenho que pegar da branch atual e fazer o git diff com a branch base - main/master
-    # como vou conseguir a branch base? talvez seja melhor pegar o commit mais recente da branch base e fazer o diff com ele
-    repo = Repo(".")
-    current_branch = repo.active_branch.name
-    base_branch = "main"  # ou "master", dependendo do seu repositório
-
-    complete_diff = repo.git.diff(f"{base_branch}..{current_branch}", name_only=True)
+@dataclass
+class DiffResult:
+    modified_files: list[str] #staged+unstaged
+    untracked_files: list[str] #completamente novo - talvez colocar uma flag futura para comparar tentar buscar só testes do unstages+untracked
+    #depois ainda quero pegar a diff mais granular, talvez por linha ou conteudo de forma semantica?? n sei
 
 
-    #olhar melhor depois:
-    # Initialize commit references
-    #hcommit = repo.head.commit
+def get_git_diff(repo_path: str = ".") -> DiffResult: #esse ponto indica o diretorio atual
+    repo = Repo(repo_path)
+    default_branch = "main"  #talvez eu deixe isso manualmente configuravel via flag depois
 
-    # 1. Compare Working Directory vs Staging Area (Index)
-    #diffs = repo.index.diff(None)
+    merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
+    working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
+    untracked_diff = repo.untracked_files
 
-    # 2. Compare Staging Area (Index) vs HEAD
-    #diffs = repo.index.diff("HEAD")
-
-    # 3. Compare HEAD Commit vs Working Directory
-    #diffs = hcommit.diff(None)
-
-    pass
+    return DiffResult(
+        modified_files=working_dir_diff,
+        untracked_files=untracked_diff
+    )
 
 
 def get_dependency_graph():
     pass
 
 
-def get_affected_tests():
+def get_affected_tests(diff_result: DiffResult, short_graph) -> list[str]:
     pass
 
 
 def run_rts():
+    """[wip] Orquestra a seleção..."""
+
+    diff_result = get_git_diff()
+
     pass
 
 #rodar o git diff pra ver a diferença
