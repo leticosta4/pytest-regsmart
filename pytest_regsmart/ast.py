@@ -2,11 +2,10 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Optional
 
 from pyan.modvis import ImportVisitor
 
-from .const import REPOSITORY_DIR
+from .const import resolve_repo
 
 #inicialmente tenho que tentar gerar a forma mais simples só com os arquivos, nao precisa das funções 
 #vou usar a API do pyan3, não o CLI
@@ -63,9 +62,9 @@ def _invert_dependency_graph(
     return DependencyGraph(dependents=dict(dependents))
 
 
-def get_dependency_graph(working_dir: Optional[str] = None) -> DependencyGraph:
-    if working_dir is None:
-        working_dir = REPOSITORY_DIR.working_tree_dir
+def get_dependency_graph(repo_path: str = ".") -> DependencyGraph:
+    repo = resolve_repo(repo_path)
+    working_dir = repo.working_tree_dir
     python_files = _find_py_files(working_dir)
 
     graph = ImportVisitor(filenames=python_files, logger=logging.getLogger(__name__), root=working_dir)

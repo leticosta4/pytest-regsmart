@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from .const import REPOSITORY_DIR
 from .ast import get_dependency_graph
+from .const import resolve_repo
 
 
 @dataclass
@@ -11,8 +11,8 @@ class DiffResult:
     #depois ainda quero pegar a diff mais granular, talvez por linha ou conteudo de forma semantica?? n sei
 
 
-def get_git_diff(repo_path: str = ".") -> DiffResult: #esse ponto indica o diretorio atual
-    repo = REPOSITORY_DIR
+def get_git_diff(repo_path: str = ".") -> DiffResult:
+    repo = resolve_repo(repo_path=repo_path)
     default_branch = "main"  #talvez eu deixe isso manualmente configuravel via flag depois
 
     merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description

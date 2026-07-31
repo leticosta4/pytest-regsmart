@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+
 from pytest import mark
 
 from pytest_regsmart.ast import (DependencyGraph, _build_module_relative_path,
@@ -181,12 +182,10 @@ def test_get_dependency_graph_leaf_module_has_no_entry(git_repo):
     assert "tests/test_app.py" not in graph.dependents
 
 
-def test_get_dependency_graph_uses_repository_dir_by_default(
-    monkeypatch, git_repo
-):
+def test_get_dependency_graph_defaults_to_dot_repo(monkeypatch, git_repo):
     _build_sample_project(git_repo)
     monkeypatch.setattr(
-        "pytest_regsmart.ast.REPOSITORY_DIR", git_repo, raising=False
+        "pytest_regsmart.ast.resolve_repo", lambda repo_path=".": git_repo
     )
 
     graph = get_dependency_graph()
