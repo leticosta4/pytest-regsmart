@@ -33,6 +33,7 @@ def run_rts():
     """[wip] Orquestra a seleção..."""
 
     diff_result = get_git_diff()
+    imports_deps_graph = get_dependency_graph() #talvez vou paralelizar isso com o git diff mais pra frente
 
     pass
 
