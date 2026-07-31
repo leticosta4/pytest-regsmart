@@ -1,4 +1,5 @@
 from enum import Enum
+from git import Repo
 
 # ------ Constants ------
 
@@ -24,3 +25,6 @@ class LEVEL(str, Enum):
     MODULE = "module"
 
 DEFAULT_LEVEL = LEVEL.PUT
+
+#diretorio base: repo raiz do repositorio git para pegar o diff e para calcular o grafo de deps
+REPOSITORY_DIR = Repo(".")  #talvez vou deixar isso configuravel via flag depois, mas por enquanto vou deixar fixo no repo raiz

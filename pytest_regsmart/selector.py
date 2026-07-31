@@ -1,5 +1,7 @@
-from git import Repo
 from dataclasses import dataclass
+
+from .const import REPOSITORY_DIR
+from .ast import get_dependency_graph
 
 
 @dataclass
@@ -10,7 +12,7 @@ class DiffResult:
 
 
 def get_git_diff(repo_path: str = ".") -> DiffResult: #esse ponto indica o diretorio atual
-    repo = Repo(repo_path)
+    repo = REPOSITORY_DIR
     default_branch = "main"  #talvez eu deixe isso manualmente configuravel via flag depois
 
     merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
@@ -21,10 +23,6 @@ def get_git_diff(repo_path: str = ".") -> DiffResult: #esse ponto indica o diret
         modified_files=working_dir_diff,
         untracked_files=untracked_diff
     )
-
-
-def get_dependency_graph():
-    pass
 
 
 def get_affected_tests(diff_result: DiffResult, short_graph) -> list[str]:
