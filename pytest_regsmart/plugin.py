@@ -11,7 +11,7 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
-from . import args
+from . import rank_args
 from . import extractor
 from . import ranker
 from . import selector
@@ -41,7 +41,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-level",
         action="store",
-        type=args.level_type,
+        type=rank_args.level_type,
         default=DEFAULT_LEVEL,
         dest="rank_level",
         help=LEVEL_HELP)
@@ -49,7 +49,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-weight",
         action="store",
-        type=args.weight_type,
+        type=rank_args.weight_type,
         default=DEFAULT_WEIGHT,
         dest="rank_weight",
         help=WEIGHT_HELP)
@@ -57,7 +57,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-replay",
         action="store",
-        type=args.replay_type,
+        type=rank_args.replay_type,
         default=DEFAULT_REPLAY,
         dest="rank_replay",
         help=REPLAY_HELP)
@@ -93,12 +93,12 @@ class PluginRunner:
         self.log = {}
         self.monitor = Monitor()
 
-        self.no_rank = args.parse_no_rank(config)
-        self.weights = args.parse_rtp_weights(config)
-        self.level = args.parse_rtp_level(config)
-        self.replay_file = args.parse_replay(config)
-        self.hist_len = args.parse_hist_len(config)
-        self.seed = args.parse_seed(config)
+        self.no_rank = rank_args.parse_no_rank(config)
+        self.weights = rank_args.parse_rtp_weights(config)
+        self.level = rank_args.parse_rtp_level(config)
+        self.replay_file = rank_args.parse_replay(config)
+        self.hist_len = rank_args.parse_hist_len(config)
+        self.seed = rank_args.parse_seed(config)
 
 
     @pytest.hookimpl(trylast=True)
