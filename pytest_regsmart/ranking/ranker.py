@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from .const import LEVEL
+from ..const import LEVEL
 
 
 def get_test_group(nodeid: str, level: LEVEL) -> str:

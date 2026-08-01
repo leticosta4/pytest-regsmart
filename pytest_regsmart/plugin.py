@@ -11,10 +11,10 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
-from . import rank_args
+from .ranking import rank_args
 from . import extractor
-from . import ranker
-from . import selector
+from .ranking import ranker
+from .selection import selector
 from . import reporter as reporter_mod
 from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT
 from .help_strings import (

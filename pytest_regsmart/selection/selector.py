@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from .ast import get_dependency_graph
-from .const import resolve_repo
+from ..const import resolve_repo
 
 
 @dataclass

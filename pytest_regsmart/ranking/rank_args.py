@@ -4,7 +4,7 @@ import argparse
 
 import numpy as np
 
-from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT, LEVEL
+from ..const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT, LEVEL
 
 
 def weight_type(string: str) -> str:

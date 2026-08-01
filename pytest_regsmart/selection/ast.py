@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from pyan.modvis import ImportVisitor
 
-from .const import resolve_repo
+from ..const import resolve_repo
 
 #inicialmente tenho que tentar gerar a forma mais simples só com os arquivos, nao precisa das funções 
 #vou usar a API do pyan3, não o CLI

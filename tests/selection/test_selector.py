@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
-from pytest_regsmart.selector import DiffResult, get_git_diff
+from pytest_regsmart.selection.selector import DiffResult, get_git_diff
 
 
 def test_commits_ahead_of_main(git_repo, commit_file):
