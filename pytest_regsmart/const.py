@@ -1,5 +1,7 @@
 from enum import Enum
 
+from git import Repo
+
 # ------ Constants ------
 
 DATA_DIR = "pytest_ranked_selection_data"
@@ -24,3 +26,7 @@ class LEVEL(str, Enum):
     MODULE = "module"
 
 DEFAULT_LEVEL = LEVEL.PUT
+
+
+def resolve_repo(repo_path: str = ".") -> Repo:
+    return Repo(repo_path)
