@@ -5,9 +5,13 @@ from pathlib import Path
 
 from pytest import mark
 
-from pytest_regsmart.selection.ast import (DependencyGraph, _build_module_relative_path,
-                                 _find_py_files, _invert_dependency_graph,
-                                 get_dependency_graph)
+from pytest_regsmart.selection.ast import (
+    DependencyGraph,
+    _build_module_relative_path,
+    _find_py_files,
+    _invert_dependency_graph,
+    get_dependency_graph,
+)
 
 
 def _write(tmp_path: Path, relpath: str, content: str = "") -> Path:

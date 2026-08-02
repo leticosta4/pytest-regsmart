@@ -5,8 +5,8 @@ import os
 from _pytest.config import Config
 from _pytest.reports import TestReport
 
-from .ranking.rank_args import min_max_normalization
 from .const import DATA_DIR
+from .ranking.rank_args import min_max_normalization
 
 
 def load_feature(

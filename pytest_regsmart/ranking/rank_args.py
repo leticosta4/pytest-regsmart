@@ -4,7 +4,14 @@ import argparse
 
 import numpy as np
 
-from ..const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT, LEVEL
+from ..const import (
+    DEFAULT_HIST_LEN,
+    DEFAULT_LEVEL,
+    DEFAULT_REPLAY,
+    DEFAULT_SEED,
+    DEFAULT_WEIGHT,
+    LEVEL,
+)
 
 
 def weight_type(string: str) -> str:
@@ -20,7 +27,7 @@ def weight_type(string: str) -> str:
         raise argparse.ArgumentTypeError(
             "Cannot parse input for `--rank-weight`."
             + "Valid examples: 1-0, 0.4-0.2, and 2-7."
-        )
+        ) from None
 
 
 def level_type(string: str) -> str:
@@ -35,7 +42,7 @@ def level_type(string: str) -> str:
         raise argparse.ArgumentTypeError(
             "Invalid input for `--rank-level`."
             + " Please run `pytest --help` for instruction."
-        )
+        ) from None
 
 
 def replay_type(string: str) -> str:
@@ -46,11 +53,11 @@ def replay_type(string: str) -> str:
         with open(string) as f:
             _ = f.readlines()
         return string
-    except Exception:
+    except Exception:  # noqa: BLE001
         raise argparse.ArgumentTypeError(
             "File provided to `--rank-replay` cannot be read."
             + " Please run `pytest --help` for instruction."
-        )
+        ) from None
 
 
 def min_max_normalization(x: list[float]) -> np.ndarray:

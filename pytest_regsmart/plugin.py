@@ -11,17 +11,26 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
-from .ranking import rank_args
 from . import extractor
-from .ranking import ranker
-from .selection import selector
 from . import reporter as reporter_mod
-from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT
+from .const import (
+    DEFAULT_HIST_LEN,
+    DEFAULT_LEVEL,
+    DEFAULT_REPLAY,
+    DEFAULT_SEED,
+    DEFAULT_WEIGHT,
+)
 from .help_strings import (
-    HIST_LEN_HELP, LEVEL_HELP, PLUGIN_HELP,
-    REPLAY_HELP, SEED_HELP, WEIGHT_HELP, NO_RANK_HELP
+    HIST_LEN_HELP,
+    LEVEL_HELP,
+    NO_RANK_HELP,
+    PLUGIN_HELP,
+    REPLAY_HELP,
+    SEED_HELP,
+    WEIGHT_HELP,
 )
 from .monitor import Monitor
+from .ranking import rank_args, ranker
 
 
 def pytest_addoption(parser: Parser) -> None:

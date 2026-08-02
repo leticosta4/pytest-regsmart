@@ -52,3 +52,10 @@ Homepage = "https://github.com/leticosta4/pytest-regsmart"
 
 [project.entry-points."pytest11"]
 pytest_regsmart = "pytest_regsmart.plugin"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+extend-select = ["UP", "B"]

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-from .ast import get_dependency_graph
 from ..const import resolve_repo
+from .ast import get_dependency_graph
 
 
 @dataclass
@@ -32,10 +34,9 @@ def get_affected_tests(diff_result: DiffResult, short_graph) -> list[str]:
 def run_rts():
     """[wip] Orquestra a seleção..."""
 
-    diff_result = get_git_diff()
-    imports_deps_graph = get_dependency_graph() #talvez vou paralelizar isso com o git diff mais pra frente
+    diff_result = get_git_diff()  # noqa: F841
+    imports_deps_graph = get_dependency_graph()  # noqa: F841  #talvez vou paralelizar isso com o git diff mais pra frente
 
-    pass
 
 #rodar o git diff pra ver a diferença
 #guardar os trechos
