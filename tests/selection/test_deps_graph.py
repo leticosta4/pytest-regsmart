@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pytest import mark
 
-from pytest_regsmart.selection.ast import (
+from pytest_regsmart.selection.deps_graph import (
     DependencyGraph,
     _build_module_relative_path,
     _find_py_files,
@@ -189,7 +189,7 @@ def test_get_dependency_graph_leaf_module_has_no_entry(git_repo):
 def test_get_dependency_graph_defaults_to_dot_repo(monkeypatch, git_repo):
     _build_sample_project(git_repo)
     monkeypatch.setattr(
-        "pytest_regsmart.selection.ast.resolve_repo", lambda repo_path=".": git_repo
+        "pytest_regsmart.selection.deps_graph.resolve_repo", lambda repo_path=".": git_repo
     )
 
     graph = get_dependency_graph()

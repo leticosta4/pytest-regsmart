@@ -1,33 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from ..const import resolve_repo
-from .ast import get_dependency_graph
+from .deps_graph import DependencyGraph, get_dependency_graph
+from .git_diff import DiffResult, get_git_diff
 
 
-@dataclass
-class DiffResult:
-    modified_files: list[str] #staged+unstaged
-    untracked_files: list[str] #completamente novo - talvez colocar uma flag futura para comparar tentar buscar só testes do unstages+untracked
-    #depois ainda quero pegar a diff mais granular, talvez por linha ou conteudo de forma semantica?? n sei
-
-
-def get_git_diff(repo_path: str = ".") -> DiffResult:
-    repo = resolve_repo(repo_path=repo_path)
-    default_branch = "main"  #talvez eu deixe isso manualmente configuravel via flag depois
-
-    merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
-    working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
-    untracked_diff = repo.untracked_files
-
-    return DiffResult(
-        modified_files=working_dir_diff,
-        untracked_files=untracked_diff
-    )
-
-
-def get_affected_tests(diff_result: DiffResult, short_graph) -> list[str]:
+def get_affected_tests(diff_result: DiffResult, imports_deps_graph: DependencyGraph) -> list[str]:
+    #para cada arquivo modificado no diff vai procurar a ref dele no grafo de dependencia e checar o valor relacioando (dependentes)
+    #dentro dos dependentes vai filtrar só os que são testes (talvez por regex ou por heuristica de nome de arquivo)
+    #eu quero pegar testes imapctados indiretamente tb, nao é só o dependente direto
     pass
 
 
@@ -36,6 +16,8 @@ def run_rts():
 
     diff_result = get_git_diff()  # noqa: F841
     imports_deps_graph = get_dependency_graph()  # noqa: F841  #talvez vou paralelizar isso com o git diff mais pra frente
+
+    selected_tests = get_affected_tests(diff_result, imports_deps_graph)  # noqa: F841
 
 
 #rodar o git diff pra ver a diferença
