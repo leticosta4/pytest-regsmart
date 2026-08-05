@@ -11,6 +11,8 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
+from pytest_regsmart.selection import selector
+
 from . import extractor
 from . import reporter as reporter_mod
 from .const import (
@@ -120,10 +122,13 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        #selector.run_rts() #ainda nao implementado, mas vai ser chamado aqui
+        selected_tests = selector.run_rts()
+        if selected_tests:
+            items[:] = [item for item in items if item.nodeid.split("::")[0] in set(selected_tests)]
+
 
         if not self.no_rank:
-            ranker.run_rtp( #tenho que ver como mudar essa assinatura para que o ranker receba somente os testes afetados, e nao todos os testes
+            ranker.run_rtp(
                 items, self.level, self.weights,
                 self.replay_file, self.seed, self.log,
                 lambda feature_name, items, reverse:

@@ -44,13 +44,4 @@ def run_rts() -> list[str]:
     diff_result = get_git_diff()
     deps_graph = get_dependency_graph() #talvez vou paralelizar isso com o git diff mais pra frente
 
-    selected_tests = get_affected_tests(diff_result, deps_graph)
-
-    return selected_tests
-
-
-#rodar o git diff pra ver a diferença
-#guardar os trechos
-#talvez em paralelo: rodar o pyan3 pra pegar o grafo de dependencias
-#funcao pra correlacionar os trechos com o grafo de dependencias e achar testes afetados
-#pega a nova lista de testes e manda para o ranker
+    return get_affected_tests(diff_result, deps_graph)
