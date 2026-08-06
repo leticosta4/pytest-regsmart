@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
+
+
+@dataclass
+class SelectionResult:
+    affected_tests: list[str]
+    has_diff: bool
 
 
 def _is_test_file(filepath: str) -> bool:
@@ -38,10 +45,13 @@ def get_affected_tests(diff_result: DiffResult, deps_graph: DependencyGraph) -> 
     return sorted(affected_tests)
 
 
-def run_rts() -> list[str]:
+def run_rts() -> SelectionResult:
     """[wip] Orquestra a seleção..."""
 
     diff_result = get_git_diff()
     deps_graph = get_dependency_graph() #talvez vou paralelizar isso com o git diff mais pra frente
 
-    return get_affected_tests(diff_result, deps_graph)
+    return SelectionResult(
+        affected_tests=get_affected_tests(diff_result, deps_graph),
+        has_diff=bool(diff_result.modified_files or diff_result.untracked_files),
+    )

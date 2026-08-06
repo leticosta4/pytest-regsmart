@@ -29,9 +29,12 @@ def pytest_report_header(config: Config) -> str | None:
 def pytest_terminal_summary(
     terminalreporter: TerminalReporter,
     log_dict: dict,
+    warnings: tuple[str, ...] = (),
 ) -> None:
     """Report plugin runtime when it is enabled."""
     tr = terminalreporter
     tr._tw.sep("=", "pytest-regsmart summary info")
+    for w in warnings:
+        tr._tw.line(f"WARNING: {w}")
     for k, v in log_dict.items():
         tr._tw.line(f"{k}: {v*1000:.2f} ms ({v} s)")

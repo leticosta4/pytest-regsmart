@@ -101,6 +101,7 @@ class PluginRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.log = {}
+        self.warnings: list[str] = []
         self.monitor = Monitor()
 
         self.no_rank = rank_args.parse_no_rank(config)
@@ -121,11 +122,22 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        selected_tests = selector.run_rts()
+        selection_start_time = time.time()
+        selection = selector.run_rts()
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
 
-        if selected_tests:
-            selected_nodes = set(selected_tests)
+        if selection.affected_tests:
+            selected_nodes = set(selection.affected_tests)
             items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
+
+        if not selection.has_diff:
+            self.warnings.append(
+                "No diff detected: regression test selection was skipped."
+            )
+            if self.no_rank:
+                self.warnings.append(
+                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+                )
 
 
         if not self.no_rank:
@@ -161,7 +173,7 @@ class PluginRunner:
             exitstatus: int,
             config: Config) -> None:
         if self.config.getoption("--regsmart"):
-            reporter_mod.pytest_terminal_summary(terminalreporter, self.log)
+            reporter_mod.pytest_terminal_summary(terminalreporter, self.log, self.warnings)
 
 
 @pytest.hookimpl(trylast=True)
