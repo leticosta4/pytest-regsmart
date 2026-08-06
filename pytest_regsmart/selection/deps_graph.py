@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from pyan.modvis import ImportVisitor
 
-from .git_diff import resolve_repo
+from .git_manager import resolve_repo
 
 #inicialmente tenho que tentar gerar a forma mais simples só com os arquivos, nao precisa das funções 
 #vou usar a API do pyan3, não o CLI

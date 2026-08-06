@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from .deps_graph import DependencyGraph, get_dependency_graph
-from .git_diff import DiffResult, get_git_diff
+from .git_manager import DiffResult, get_git_diff
 
 
 def _is_test_file(filepath: str) -> bool:
