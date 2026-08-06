@@ -10,6 +10,7 @@ from _pytest.main import Session
 from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
+from git.exc import GitCommandError
 
 from pytest_regsmart.selection import selector
 
@@ -122,9 +123,15 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        selected_tests = selector.run_rts()
+        selected_tests: list[str] = []
+        try:
+            selected_tests = selector.run_rts()
+        except GitCommandError:
+            #repo git sem a branch default 'main' (tratamento dinamico fica pra depois) -> roda tudo
+            selected_tests = []
         if selected_tests:
-            items[:] = [item for item in items if item.nodeid.split("::")[0] in set(selected_tests)]
+            selected_nodes = set(selected_tests)
+            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
 
 
         if not self.no_rank:
@@ -171,6 +178,11 @@ def pytest_configure(config: Config) -> None:
                 raise pytest.UsageError(
                     "--no-rank cannot be used together with other ranking flags. It excludes RTP."
                 )
+
+    if config.getoption("--regsmart") and not selector.is_git_repo():
+        raise pytest.UsageError(
+            "--regsmart requires a git repository."
+        )
 
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)
