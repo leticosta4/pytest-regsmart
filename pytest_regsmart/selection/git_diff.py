@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from git import Repo
+from git.exc import InvalidGitRepositoryError, NoSuchPathError
 
 
 @dataclass
@@ -13,6 +15,14 @@ class DiffResult:
 
 def resolve_repo(repo_path: str = ".") -> Repo:
     return Repo(repo_path)
+
+
+def verify_git_repo(repo_path: str = ".") -> bool:
+    try:
+        resolve_repo(repo_path)
+        return True
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return False
 
 
 def get_git_diff(repo_path: str = ".") -> DiffResult:
