@@ -12,7 +12,7 @@ from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 from git.exc import GitCommandError
 
-from pytest_regsmart.selection import selector, git_manager
+from pytest_regsmart.selection import git_manager, selector
 
 from . import extractor
 from . import reporter as reporter_mod

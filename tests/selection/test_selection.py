@@ -1,5 +1,5 @@
-from pytest_regsmart.selection.git_manager import DiffResult
 from pytest_regsmart.selection.deps_graph import DependencyGraph
+from pytest_regsmart.selection.git_manager import DiffResult
 from pytest_regsmart.selection.selector import get_affected_tests
 
 
