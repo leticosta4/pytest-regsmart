@@ -5,7 +5,21 @@ from pathlib import Path
 import pytest
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
-from pytest_regsmart.selection.git_manager import get_git_diff
+from pytest_regsmart.selection.git_manager import get_git_diff, verify_git_repo
+
+
+def test_verify_git_repo_true(git_repo, commit_file):
+    commit_file("file_a.py")
+
+    assert verify_git_repo(str(git_repo.working_tree_dir)) is True
+
+
+def test_verify_git_repo_false(tmp_path):
+    assert verify_git_repo(str(tmp_path)) is False
+
+
+def test_verify_git_repo_nonexistent_path(tmp_path):
+    assert verify_git_repo(str(tmp_path / "does-not-exist")) is False
 
 
 def test_commits_ahead_of_main(git_repo, commit_file):
