@@ -12,7 +12,7 @@ from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 from git.exc import GitCommandError
 
-from pytest_regsmart.selection import selector
+from pytest_regsmart.selection import selector, git_manager
 
 from . import extractor
 from . import reporter as reporter_mod
@@ -179,7 +179,7 @@ def pytest_configure(config: Config) -> None:
                     "--no-rank cannot be used together with other ranking flags. It excludes RTP."
                 )
 
-    if config.getoption("--regsmart") and not selector.is_git_repo():
+    if config.getoption("--regsmart") and not git_manager.verify_git_repo():
         raise pytest.UsageError(
             "--regsmart requires a git repository."
         )

@@ -39,4 +39,14 @@ def mytester(pytester):
             console_output_style = classic
             """,
     )
+    repo = Repo.init(pytester.path)
+    writer = repo.config_writer()
+    writer.set_value("user", "name", "Test")
+    writer.set_value("user", "email", "test@test.com")
+    writer.release()
+    if repo.active_branch.name != "main":
+        repo.git.branch("-m", "main")
+    (pytester.path / ".gitignore").write_text("__pycache__/\n")
+    repo.index.add([".gitignore"])
+    repo.index.commit("chore: baseline")
     yield pytester
