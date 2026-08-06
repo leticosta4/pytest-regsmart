@@ -44,8 +44,6 @@ def mytester(pytester):
     writer.set_value("user", "name", "Test")
     writer.set_value("user", "email", "test@test.com")
     writer.release()
-    if repo.active_branch.name != "main":
-        repo.git.branch("-m", "main")
     (pytester.path / ".gitignore").write_text("__pycache__/\n")
     repo.index.add([".gitignore"])
     repo.index.commit("chore: baseline")

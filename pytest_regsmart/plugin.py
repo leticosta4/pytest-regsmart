@@ -10,9 +10,6 @@ from _pytest.main import Session
 from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
-from git.exc import GitCommandError
-
-from pytest_regsmart.selection import git_manager, selector
 
 from . import extractor
 from . import reporter as reporter_mod
@@ -34,6 +31,7 @@ from .help_strings import (
 )
 from .monitor import Monitor
 from .ranking import rank_args, ranker
+from .selection import git_manager, selector
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -123,12 +121,8 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        selected_tests: list[str] = []
-        try:
-            selected_tests = selector.run_rts()
-        except GitCommandError:
-            #repo git sem a branch default 'main' (tratamento dinamico fica pra depois) -> roda tudo
-            selected_tests = []
+        selected_tests = selector.run_rts()
+
         if selected_tests:
             selected_nodes = set(selected_tests)
             items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
