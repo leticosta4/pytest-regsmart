@@ -3,6 +3,17 @@
 
 ## pytest-regsmart
 
+0.5.0 (2026-08-07)
+----
+
+* Add Regression Test Selection (RTS): a new `selection` module that computes the test files affected by the current changes and runs only them under `--regsmart`
+  * Detect changed files with git (modified + untracked) against the resolved default branch (origin/HEAD → main/master → active branch); repositories without commits fall back to untracked files only
+  * Build a module-level dependency graph with pyan3 and propagate changes transitively (BFS) to affected test files
+  * Raise a `UsageError` when `--regsmart` is used outside a git repository
+* Refine `--no-rank`: it now only disables RTP while keeping RTS active, and cannot be combined with other `--rank-*` flags (raises a `UsageError`)
+* Report the RTS configuration and timing in the terminal header/summary
+* Add integration tests for the selection module and improve the test suite
+
 0.4.0 (2026-07-24)
 ----
 

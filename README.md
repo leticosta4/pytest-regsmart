@@ -1,9 +1,9 @@
 # pytest-regsmart
 
-A Pytest plugin that implements Regression Test Prioritization (RTP) for faster regression fault detection.
+A Pytest plugin that implements Regression Test Selection (RTS) and Regression Test Prioritization (RTP) for faster regression fault detection.
 
 This [pytest](https://github.com/pytest-dev/pytest) plugin allows you to find regression test failures faster and receive testing feedback sooner from CI build.
-It speeds up the failure detection of your test suite by executing earlier the tests that are faster and recently failed.
+When enabled with `--regsmart`, it first **selects** only the test files affected by the changes since the last baseline (RTS), then **prioritizes** them so that the tests that are faster or recently failed run earlier (RTP).
 
 ## Installation
 
@@ -20,15 +20,18 @@ pip install pytest-regsmart
 ## Usage
 
 Pytest will automatically find the plugin and use it when you run ``pytest``.
-You can run `pytest-regsmart` with its default configuration, which runs faster tests first by passing the ``--regsmart`` option:
+You can run `pytest-regsmart` with its default configuration, which selects only the affected tests and runs faster tests first, by passing the ``--regsmart`` option:
 
 ```bash
 pytest --regsmart
 ```
 
+Note that `--regsmart` requires the project to be a `git` repository (the regression test selection is computed from the changes since the last baseline). Running it outside a git repo raises a `UsageError`.
+
 Before the test run starts, if `--regsmart` is passed, the terminal header will report `pytest-regsmart`'s configuration of this run, for example:
 
 ```
+Starting Smart Regression Test Management (RTS + RTP)
 Using --rank-weight=1-0
 Using --rank-level=put
 Using --rank-hist-len=50
@@ -40,9 +43,25 @@ After the test run finishes, the terminal summary will show the overhead of `pyt
 
 ```
 =================================== pytest-regsmart summary info ====================================
-Time to reorder tests (s): 0.0003600120544433594
+Time to run the regression test selection (s): 0.0003604120544433594
+Time to reorder tests (s): 0.0004608631134033203
 Time to collect test features (s): 0.0004608631134033203
 ```
+
+## How Regression Test Selection (RTS) works
+
+When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection step before the tests are executed:
+
+1. **Compute the changed files.** It uses git to inspect the working tree against the default branch:
+   - the default branch is resolved from `refs/remotes/origin/HEAD`, falling back to `main`/`master`, and finally to the currently active branch;
+   - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
+2. **Build a dependency graph.** Using [`pyan3`](https://pypi.org/project/pyan3/), it parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`) and builds a module-level import graph. This graph is then inverted so that, for each module, it knows *which* other modules depend on it.
+3. **Propagate changes transitively.** A BFS traversal starts from the changed and untracked files and walks through their dependents, collecting any test file (files named `test_*.py` or `*_test.py`) that is affected directly or indirectly.
+4. **Filter the test suite.** Test items whose file is not in the selected set are removed from the run; only affected tests are actually executed.
+
+If there is no diff since the baseline, the selection is skipped (a warning is reported) and the full test suite runs.
+
+Because selection works at the **module/file level**, it is intentionally conservative: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary. Finer (e.g. function-level) granularity is planned as future work.
 
 ### Disabling ranking (RTP)
 
@@ -52,7 +71,15 @@ You can disable the regression test prioritization while keeping the plugin acti
 pytest --regsmart --no-rank
 ```
 
-This is useful when you want to collect test data without reordering tests.
+This is useful when you want to run only the selected tests (RTS) without reordering them (RTP).
+With `--no-rank`, the header instead reports:
+
+```
+Starting RTS (Regression Test Selection)
+Using --no-rank (RTP disabled).
+```
+
+Note that `--no-rank` **cannot be combined with other `--rank-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
 
 ### Optimizing test prioritization heuristics
 
@@ -143,7 +170,7 @@ and run `pytest --regsmart` on the command line.
 
 ## Deployment (old)
 
-`pytest-regsmart` is easy to deploy into CI workflow, please see [deployment](./docs/DEPLOYMENT.md).
+`pytest-regsmart` is easy to deploy into CI workflow, please see [deployment](./DEPLOYMENT.md).
 
 ## Local development
 
