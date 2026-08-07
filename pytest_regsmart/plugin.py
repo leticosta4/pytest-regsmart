@@ -31,6 +31,7 @@ from .help_strings import (
 )
 from .monitor import Monitor
 from .ranking import rank_args, ranker
+from .selection import git_manager, selector
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -100,6 +101,7 @@ class PluginRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.log = {}
+        self.warnings: list[str] = []
         self.monitor = Monitor()
 
         self.no_rank = rank_args.parse_no_rank(config)
@@ -120,10 +122,26 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        #selector.run_rts() #ainda nao implementado, mas vai ser chamado aqui
+        selection_start_time = time.time()
+        selection = selector.run_rts()
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
+
+        if selection.affected_tests:
+            selected_nodes = set(selection.affected_tests)
+            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
+
+        if not selection.has_diff:
+            self.warnings.append(
+                "No diff detected: regression test selection was skipped."
+            )
+            if self.no_rank:
+                self.warnings.append(
+                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+                )
+
 
         if not self.no_rank:
-            ranker.run_rtp( #tenho que ver como mudar essa assinatura para que o ranker receba somente os testes afetados, e nao todos os testes
+            ranker.run_rtp(
                 items, self.level, self.weights,
                 self.replay_file, self.seed, self.log,
                 lambda feature_name, items, reverse:
@@ -155,7 +173,7 @@ class PluginRunner:
             exitstatus: int,
             config: Config) -> None:
         if self.config.getoption("--regsmart"):
-            reporter_mod.pytest_terminal_summary(terminalreporter, self.log)
+            reporter_mod.pytest_terminal_summary(terminalreporter, self.log, self.warnings)
 
 
 @pytest.hookimpl(trylast=True)
@@ -166,6 +184,11 @@ def pytest_configure(config: Config) -> None:
                 raise pytest.UsageError(
                     "--no-rank cannot be used together with other ranking flags. It excludes RTP."
                 )
+
+    if config.getoption("--regsmart") and not git_manager.verify_git_repo():
+        raise pytest.UsageError(
+            "--regsmart requires a git repository."
+        )
 
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)
