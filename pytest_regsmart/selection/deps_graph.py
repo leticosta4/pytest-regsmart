@@ -18,7 +18,7 @@ class DependencyGraph:
 
 
 def _find_py_files(working_dir: str) -> list[str]:
-    excludes = [".venv", ".git", "__pycache__", "dist", "build"]
+    excludes = [".venv", ".git", "__pycache__", "dist", "build", "venv", "site-packages"]
 
     py_files = []
     for dirpath, dirnames, filenames in os.walk(working_dir):
