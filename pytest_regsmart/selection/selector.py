@@ -24,9 +24,9 @@ def get_affected_tests(diff_result: DiffResult, deps_graph: DependencyGraph) -> 
     #eu quero pegar testes imapctados indiretamente tb, nao é só o dependente direto
     
     changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
+    affected_tests = sorted(f for f in changed_files if _is_test_file(f))
     seen = set(changed_files)
     to_check = list(changed_files)
-    affected_tests = []
 
     while to_check:
         current_file = to_check.pop()
