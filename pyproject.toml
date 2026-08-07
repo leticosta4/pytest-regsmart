@@ -18,6 +18,8 @@ requires-python = ">=3.8"
 dependencies = [
   "pytest>=7.4.3",
   "numpy",
+  "pyan3>=1.2.0",
+  "gitpython>=3.1.57",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -50,3 +52,10 @@ Homepage = "https://github.com/leticosta4/pytest-regsmart"
 
 [project.entry-points."pytest11"]
 pytest_regsmart = "pytest_regsmart.plugin"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+extend-select = ["UP", "B"]

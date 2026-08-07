@@ -1,6 +1,5 @@
 import textwrap
 
-
 PLUGIN_HELP = textwrap.dedent("""\
 Run regression test prioritization for pytest test suite.
 It re-orders execution of tests to expose test failure sooner.

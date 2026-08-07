@@ -11,16 +11,27 @@ from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
 
-from . import args
 from . import extractor
-from . import ranker
 from . import reporter as reporter_mod
-from .const import DEFAULT_HIST_LEN, DEFAULT_LEVEL, DEFAULT_REPLAY, DEFAULT_SEED, DEFAULT_WEIGHT
+from .const import (
+    DEFAULT_HIST_LEN,
+    DEFAULT_LEVEL,
+    DEFAULT_REPLAY,
+    DEFAULT_SEED,
+    DEFAULT_WEIGHT,
+)
 from .help_strings import (
-    HIST_LEN_HELP, LEVEL_HELP, PLUGIN_HELP,
-    REPLAY_HELP, SEED_HELP, WEIGHT_HELP, NO_RANK_HELP
+    HIST_LEN_HELP,
+    LEVEL_HELP,
+    NO_RANK_HELP,
+    PLUGIN_HELP,
+    REPLAY_HELP,
+    SEED_HELP,
+    WEIGHT_HELP,
 )
 from .monitor import Monitor
+from .ranking import rank_args, ranker
+from .selection import git_manager, selector
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -40,7 +51,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-level",
         action="store",
-        type=args.level_type,
+        type=rank_args.level_type,
         default=DEFAULT_LEVEL,
         dest="rank_level",
         help=LEVEL_HELP)
@@ -48,7 +59,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-weight",
         action="store",
-        type=args.weight_type,
+        type=rank_args.weight_type,
         default=DEFAULT_WEIGHT,
         dest="rank_weight",
         help=WEIGHT_HELP)
@@ -56,7 +67,7 @@ def pytest_addoption(parser: Parser) -> None:
     group._addoption(
         "--rank-replay",
         action="store",
-        type=args.replay_type,
+        type=rank_args.replay_type,
         default=DEFAULT_REPLAY,
         dest="rank_replay",
         help=REPLAY_HELP)
@@ -90,14 +101,15 @@ class PluginRunner:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.log = {}
+        self.warnings: list[str] = []
         self.monitor = Monitor()
 
-        self.no_rank = args.parse_no_rank(config)
-        self.weights = args.parse_rtp_weights(config)
-        self.level = args.parse_rtp_level(config)
-        self.replay_file = args.parse_replay(config)
-        self.hist_len = args.parse_hist_len(config)
-        self.seed = args.parse_seed(config)
+        self.no_rank = rank_args.parse_no_rank(config)
+        self.weights = rank_args.parse_rtp_weights(config)
+        self.level = rank_args.parse_rtp_level(config)
+        self.replay_file = rank_args.parse_replay(config)
+        self.hist_len = rank_args.parse_hist_len(config)
+        self.seed = rank_args.parse_seed(config)
 
 
     @pytest.hookimpl(trylast=True)
@@ -110,7 +122,23 @@ class PluginRunner:
                 "--rank-replay cannot be used together with random order."
             )
         
-        #acho que o selector vai vir aqui
+        selection_start_time = time.time()
+        selection = selector.run_rts()
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
+
+        if selection.affected_tests:
+            selected_nodes = set(selection.affected_tests)
+            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
+
+        if not selection.has_diff:
+            self.warnings.append(
+                "No diff detected: regression test selection was skipped."
+            )
+            if self.no_rank:
+                self.warnings.append(
+                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+                )
+
 
         if not self.no_rank:
             ranker.run_rtp(
@@ -145,7 +173,7 @@ class PluginRunner:
             exitstatus: int,
             config: Config) -> None:
         if self.config.getoption("--regsmart"):
-            reporter_mod.pytest_terminal_summary(terminalreporter, self.log)
+            reporter_mod.pytest_terminal_summary(terminalreporter, self.log, self.warnings)
 
 
 @pytest.hookimpl(trylast=True)
@@ -156,6 +184,11 @@ def pytest_configure(config: Config) -> None:
                 raise pytest.UsageError(
                     "--no-rank cannot be used together with other ranking flags. It excludes RTP."
                 )
+
+    if config.getoption("--regsmart") and not git_manager.verify_git_repo():
+        raise pytest.UsageError(
+            "--regsmart requires a git repository."
+        )
 
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)

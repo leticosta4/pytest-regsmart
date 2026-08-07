@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import textwrap
-
 from tests.fake_test_data import (
     test_a_method,
     test_a_method_two,

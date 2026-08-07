@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from .const import LEVEL
+from ..const import LEVEL
 
 
 def get_test_group(nodeid: str, level: LEVEL) -> str:
@@ -69,7 +69,7 @@ def run_rtp(
     scores: dict = {}
     if replay_file and os.path.exists(replay_file):
         with open(replay_file) as f:
-            test_list = [x.strip() for x in f.readlines()]
+            test_list = [x.strip() for x in f]
             scores = {x: i for i, x in enumerate(test_list)}
     elif weights == [0, 0]:
         items.sort(key=lambda item: item.nodeid)
