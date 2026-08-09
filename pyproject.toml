@@ -19,7 +19,7 @@ dependencies = [
   "pytest>=7.4.3",
   "numpy",
   "pyan3>=1.2.0",
-  "gitpython>=3.1.57",
+  "gitpython>=3.1.58",
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
