@@ -37,7 +37,7 @@ from .selection import git_manager, selector
 def pytest_addoption(parser: Parser) -> None:
     group = parser.getgroup("regsmart", "pytest-regsmart")
     group._addoption(
-        "--regsmart", #era o antigo --rank que ativava o default basico do pytest-ranking
+        "--regsmart", #was the old --rank flag that activated the pytest-ranking default
         action="store_true",
         help=PLUGIN_HELP)
     
@@ -46,7 +46,7 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         default=False,
         help=NO_RANK_HELP,
-        dest="no_rank") #talvez nao precise
+        dest="no_rank") #maybe unecessary
 
     group._addoption(
         "--rank-level",
@@ -118,7 +118,7 @@ class PluginRunner:
             return
 
         if self.replay_file and self.weights == [0, 0]:
-            raise argparse.ArgumentTypeError( #ou usage error
+            raise argparse.ArgumentTypeError( #or usage error
                 "--rank-replay cannot be used together with random order."
             )
         

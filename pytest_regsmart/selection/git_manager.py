@@ -9,8 +9,8 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 @dataclass
 class DiffResult:
     modified_files: list[str] #staged+unstaged
-    untracked_files: list[str] #completamente novo - talvez colocar uma flag futura para comparar tentar buscar só testes do unstages+untracked
-    #depois ainda quero pegar a diff mais granular, talvez por linha ou conteudo de forma semantica?? n sei
+    untracked_files: list[str] #brand new files - maybe add a future flag to look only at unstaged+untracked tests
+    #later I also want a more granular diff, maybe per line or by semantic content?? idk
 
 
 def resolve_repo(repo_path: str = ".") -> Repo:
@@ -26,14 +26,14 @@ def verify_git_repo(repo_path: str = ".") -> bool:
 
 
 def get_default_repo_branch(repo: Repo) -> str:
-    try: #pra quando o repo tem remote (origin/HEAD)
+    try: #for when the repo has a remote (origin/HEAD)
         symbolic_ref = repo.git.symbolic_ref('refs/remotes/origin/HEAD')
-        return symbolic_ref.split('/')[-1] #a ultima parte da ref é o nome da branch
+        return symbolic_ref.split('/')[-1] #the last part of the ref is the branch name
     except GitCommandError:
         pass
 
     
-    branch_names = [branch.name for branch in repo.branches] #se nao tiver vai tentar buscar main/master
+    branch_names = [branch.name for branch in repo.branches] #fall back to main/master if not found
     for candidate in ("main", "master"):
         if candidate in branch_names:
             return candidate
@@ -42,20 +42,20 @@ def get_default_repo_branch(repo: Repo) -> str:
         return repo.active_branch.name
     except TypeError:  # detached head
         raise ValueError(
-            "Unable to determine the default branch." #sem origin/HEAD, sem main/master e sem branch ativa
+            "Unable to determine the default branch." #no origin/HEAD, no main/master, no active branch
         ) from None
 
 
 def get_git_diff(repo_path: str = ".") -> DiffResult:
     repo = resolve_repo(repo_path=repo_path)
 
-    if not repo.head.is_valid(): #se o repo nao tem commits (mas tem git init), vou só checar o diff untracked
+    if not repo.head.is_valid(): #repo has no commits yet (just git init); only check the untracked diff
         return DiffResult(
             modified_files=[],
             untracked_files=repo.untracked_files
         )
 
-    default_branch = get_default_repo_branch(repo) #talvez eu deixe isso manualmente configuravel via flag depois
+    default_branch = get_default_repo_branch(repo) #maybe make this configurable via a flag later
 
     merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
     working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()

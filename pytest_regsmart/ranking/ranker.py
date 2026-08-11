@@ -62,7 +62,7 @@ def run_rtp(
     log_dict: dict,
     load_feature_fn,
 ) -> None:
-    """Orquestra o ranqueamento: replay, random, ou híbrido."""
+    """Orchestrates the ranking: replay, random, or hybrid."""
     init_order = {item.nodeid: i for i, item in enumerate(items)}
     start_time = time.time()
 
