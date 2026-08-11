@@ -10,6 +10,7 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 class DiffResult:
     modified_files: list[str] #staged+unstaged
     untracked_files: list[str] #brand new files - maybe add a future flag to look only at unstaged+untracked tests
+    used_branch: str
     #later I also want a more granular diff, maybe per line or by semantic content?? idk
 
 
@@ -52,7 +53,8 @@ def get_git_diff(repo_path: str = ".") -> DiffResult:
     if not repo.head.is_valid(): #repo has no commits yet (just git init); only check the untracked diff
         return DiffResult(
             modified_files=[],
-            untracked_files=repo.untracked_files
+            untracked_files=repo.untracked_files,
+            used_branch=""
         )
 
     default_branch = get_default_repo_branch(repo) #maybe make this configurable via a flag later
@@ -63,5 +65,6 @@ def get_git_diff(repo_path: str = ".") -> DiffResult:
 
     return DiffResult(
         modified_files=working_dir_diff,
-        untracked_files=untracked_diff
+        untracked_files=untracked_diff,
+        used_branch=default_branch
     )

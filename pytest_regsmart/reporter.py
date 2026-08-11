@@ -6,6 +6,7 @@ from _pytest.terminal import TerminalReporter
 
 def pytest_report_header(config: Config) -> str | None:
     """Report plugin configurations before test session starts."""
+
     if not config.getoption("--regsmart"):
         return None
 
@@ -35,10 +36,13 @@ def pytest_terminal_summary(
     terminalreporter: TerminalReporter,
     log_dict: dict,
     warnings: tuple[str, ...] = (),
+    branch: str = "",
 ) -> None:
     """Report plugin runtime when it is enabled."""
     tr = terminalreporter
     tr._tw.sep("=", "pytest-regsmart summary info")
+    if branch:
+        tr._tw.line(f"Branched used for diff detection: {branch}")
     for w in warnings:
         tr._tw.line(f"WARNING: {w}")
     for k, v in log_dict.items():

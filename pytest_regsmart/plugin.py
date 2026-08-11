@@ -104,6 +104,7 @@ class PluginRunner:
         self.warnings: list[str] = []
         self.monitor = Monitor()
 
+        self.branch = ""  # will be set after selection
         self.no_rank = rank_args.parse_no_rank(config)
         self.weights = rank_args.parse_rtp_weights(config)
         self.level = rank_args.parse_rtp_level(config)
@@ -124,6 +125,7 @@ class PluginRunner:
         
         selection_start_time = time.time()
         selection = selector.run_rts()
+        self.branch = selection.branch
         self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
 
         if selection.affected_tests:
@@ -173,7 +175,9 @@ class PluginRunner:
             exitstatus: int,
             config: Config) -> None:
         if self.config.getoption("--regsmart"):
-            reporter_mod.pytest_terminal_summary(terminalreporter, self.log, self.warnings)
+            reporter_mod.pytest_terminal_summary(
+                terminalreporter, self.log, self.warnings, branch=self.branch,
+            )
 
 
 @pytest.hookimpl(trylast=True)

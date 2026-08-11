@@ -11,6 +11,7 @@ from .git_manager import DiffResult, get_git_diff
 class SelectionResult:
     affected_tests: list[str]
     has_diff: bool
+    branch: str
 
 
 def _is_test_file(filepath: str) -> bool:
@@ -54,4 +55,5 @@ def run_rts() -> SelectionResult:
     return SelectionResult(
         affected_tests=get_affected_tests(diff_result, deps_graph),
         has_diff=bool(diff_result.modified_files or diff_result.untracked_files),
+        branch=diff_result.used_branch,
     )
