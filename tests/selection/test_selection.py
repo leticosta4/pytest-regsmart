@@ -14,6 +14,7 @@ def test_get_affected_tests_reaches_indirect_test_dependents():
     diff_result = DiffResult(
         modified_files=["service.py"],
         untracked_files=[],
+        used_branch="main",
     )
 
     result = get_affected_tests(diff_result, deps_graph)

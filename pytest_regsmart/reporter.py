@@ -42,7 +42,7 @@ def pytest_terminal_summary(
     tr = terminalreporter
     tr._tw.sep("=", "pytest-regsmart summary info")
     if branch:
-        tr._tw.line(f"Branched used for diff detection: {branch}")
+        tr._tw.line(f"Default branch used for comparison: {branch}")
     for w in warnings:
         tr._tw.line(f"WARNING: {w}")
     for k, v in log_dict.items():
