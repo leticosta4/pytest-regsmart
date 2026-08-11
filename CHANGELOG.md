@@ -3,6 +3,14 @@
 
 ## pytest-regsmart
 
+0.6.0 (2026-08-10)
+----
+
+* Drop support for python 3.8 and 3.9 
+* Bump pytest from version 7.4.3 to 9.0.3
+* Bump gitpython from 3.1.57 to 3.1.58 
+
+
 0.5.0 (2026-08-07)
 ----
 
