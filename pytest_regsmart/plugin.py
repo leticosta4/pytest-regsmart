@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_REPLAY,
     DEFAULT_SEED,
     DEFAULT_WEIGHT,
+    DEFAULT_DIFF_LEVEL,
 )
 from .help_strings import (
     HIST_LEN_HELP,
@@ -28,10 +29,11 @@ from .help_strings import (
     REPLAY_HELP,
     SEED_HELP,
     WEIGHT_HELP,
+    DIFF_LEVEL_HELP,
 )
 from .monitor import Monitor
 from .ranking import rank_args, ranker
-from .selection import git_manager, selector
+from .selection import git_manager, selector, selection_args
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -41,7 +43,14 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         help=PLUGIN_HELP)
 
-    #new flag here
+    #new flag to keep both file/line options
+    group.addoption(
+        "--diff-level",
+        action="store",
+        type=selection_args.level_type,
+        default=DEFAULT_DIFF_LEVEL,
+        dest="diff_level",
+        help=DIFF_LEVEL_HELP)
 
     group._addoption(
         "--no-rank",
@@ -90,6 +99,7 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_SEED,
         help=SEED_HELP)
 
+    parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL)
     parser.addini("no_rank", NO_RANK_HELP, default=False)
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
@@ -107,6 +117,7 @@ class PluginRunner:
         self.monitor = Monitor()
 
         self.branch = ""  # will be set after selection
+        self.diff_level = selection_args
         self.no_rank = rank_args.parse_no_rank(config)
         self.weights = rank_args.parse_rtp_weights(config)
         self.level = rank_args.parse_rtp_level(config)
@@ -126,9 +137,9 @@ class PluginRunner:
             )
         
         selection_start_time = time.time()
-        selection = selector.run_rts()
+        selection = selector.run_rts() #vai passar a flag aqui e retorna dependendo do diff 
         self.branch = selection.branch
-        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time #vai entrar em condicional pra ver o tipo do diff
 
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)

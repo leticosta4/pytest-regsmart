@@ -43,3 +43,7 @@ NO_RANK_HELP = textwrap.dedent("""
 Boolean flag to disable ranking option (RTP); cannot be used with other ranking flags.
 When selected, tests will run in pytest default order.
 """) #need to adapt this ending to use the RTS later
+
+DIFF_LEVEL_HELP = textwrap.dedent("""
+The levels at which the diff will be identified using Git.
+""") #make this better asap
