@@ -6,11 +6,11 @@ import numpy as np
 
 from ..const import (
     DEFAULT_HIST_LEN,
-    DEFAULT_LEVEL,
+    DEFAULT_RANK_LEVEL,
     DEFAULT_REPLAY,
     DEFAULT_SEED,
     DEFAULT_WEIGHT,
-    LEVEL,
+    RANK_LEVEL,
 )
 
 
@@ -32,10 +32,10 @@ def weight_type(string: str) -> str:
 
 def level_type(string: str) -> str:
     "Check level format."
-    if string == DEFAULT_LEVEL:
+    if string == DEFAULT_RANK_LEVEL:
         return string
     try:
-        valid_levels = [i.value for i in LEVEL]
+        valid_levels = [i.value for i in RANK_LEVEL]
         assert string in valid_levels
         return string
     except AssertionError:
@@ -84,7 +84,7 @@ def parse_rtp_weights(config) -> list[float]:
 def parse_rtp_level(config) -> str:
     """Get test group level, non-default CLI overrides ini file input."""
     level = config.getoption("--rank-level")
-    if level == DEFAULT_LEVEL:
+    if level == DEFAULT_RANK_LEVEL:
         ini_val = config.getini("rank_level")
         level = ini_val if ini_val else level
     return level

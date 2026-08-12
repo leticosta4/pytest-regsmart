@@ -26,7 +26,7 @@ You can run random order via setting `--rank-weight=0-0`
 Default value is 0.
 """)
 
-LEVEL_HELP = textwrap.dedent("""
+RANK_LEVEL_HELP = textwrap.dedent("""
 The test group level at which the prioritization takes place.
 Test items below the configured level follow pytest default order.
 Score of a test group is the mean score over all tests in that group.

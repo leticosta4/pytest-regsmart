@@ -14,7 +14,7 @@ DEFAULT_SEED = 0
 DEFAULT_REPLAY = None
 
 
-class LEVEL(str, Enum):
+class RANK_LEVEL(str, Enum):
     """The test group level at which the test suites are reordered.
     Tests within each group follows the pytest default order.
     https://docs.pytest.org/en/stable/reference/fixtures.html#fixtures
@@ -23,4 +23,4 @@ class LEVEL(str, Enum):
     FUNCTION = "function"
     MODULE = "module"
 
-DEFAULT_LEVEL = LEVEL.PUT
+DEFAULT_RANK_LEVEL = RANK_LEVEL.PUT
