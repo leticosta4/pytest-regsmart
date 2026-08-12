@@ -147,7 +147,7 @@ class PluginRunner:
 
         if not selection.has_diff:
             self.warnings.append(
-                "No diff detected: regression test selection was skipped."
+                "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
             )
             if self.no_rank:
                 self.warnings.append(
