@@ -130,6 +130,7 @@ def test_get_git_diff_custom_default_branch(git_repo, commit_file):
 
     assert result.modified_files == []
     assert result.untracked_files == []
+    assert result.used_branch == "develop"
 
 
 def test_get_git_diff_no_commits(tmp_path):
@@ -140,3 +141,4 @@ def test_get_git_diff_no_commits(tmp_path):
 
     assert result.modified_files == []
     assert "new_file.py" in result.untracked_files
+    assert result.used_branch == ""

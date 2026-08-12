@@ -127,3 +127,17 @@ def test_invalid_level(mytester):
     out = mytester.runpytest(*args)
     error_msg = "Invalid input for `--rank-level`."
     assert any(error_msg in x for x in out.errlines)
+
+
+def test_summary_reports_used_branch(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    args = ["-v", "--regsmart"]
+    out = mytester.runpytest(*args)
+    out.assert_outcomes(passed=2, failed=1)
+    assert any(
+        x.startswith("Default branch used for comparison:")
+        for x in out.outlines
+    )
