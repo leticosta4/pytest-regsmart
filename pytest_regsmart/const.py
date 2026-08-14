@@ -28,7 +28,7 @@ DEFAULT_RANK_LEVEL = RANK_LEVEL.PUT
 
 class DIFF_LEVEL(str, Enum):
     """The level at which the diff is identified."""
-    LINE = "line" #still not sure about this
+    FUNCTION = "function"
     FILE = "file"
 
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FILE #for now... i'll change it later
