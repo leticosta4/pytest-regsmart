@@ -117,7 +117,7 @@ class PluginRunner:
         self.monitor = Monitor()
 
         self.branch = ""  # will be set after selection
-        self.diff_level = selection_args
+        self.diff_level = selection_args.parse_diff_level(config)
         self.no_rank = rank_args.parse_no_rank(config)
         self.weights = rank_args.parse_rtp_weights(config)
         self.level = rank_args.parse_rtp_level(config)
