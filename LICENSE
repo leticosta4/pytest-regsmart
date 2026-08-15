@@ -15,14 +15,6 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software Foundation,
 Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-This program incorporates code derived from pytest-ranking
-(https://github.com/softwareTestingResearch/pytest-ranking), originally
-licensed under the MIT License, and depends on pyan3
-(https://pypi.org/project/pyan3/), licensed under the GNU General Public
-License, version 2 or later. See NOTICE.md for full attribution details.
-
-===============================================================================
-
                     GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 
