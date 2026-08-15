@@ -233,7 +233,8 @@ Contributions are very welcome.
 
 ## License
 
-Distributed under the terms of the [MIT](http://opensource.org/licenses/MIT) license, `pytest-regsmart` is free and open-source software.
+Distributed under the terms of the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html), `pytest-regsmart` is free and open-source software.
+See [NOTICE.md](./NOTICE.md) for attribution of the incorporated third-party code (pytest-ranking under the MIT License and pyan3 under the GPLv2+).
 
 ## Issues
 
