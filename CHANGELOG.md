@@ -3,6 +3,13 @@
 
 ## pytest-regsmart
 
+0.6.1 (2026-08-11)
+----
+
+* Changes license from MIT for GPLv2+
+* Adds default branch information in summary log report
+
+
 0.6.0 (2026-08-10)
 ----
 
