@@ -26,7 +26,7 @@ You can run random order via setting `--rank-weight=0-0`
 Default value is 0.
 """)
 
-LEVEL_HELP = textwrap.dedent("""
+RANK_LEVEL_HELP = textwrap.dedent("""
 The test group level at which the prioritization takes place.
 Test items below the configured level follow pytest default order.
 Score of a test group is the mean score over all tests in that group.
@@ -43,3 +43,7 @@ NO_RANK_HELP = textwrap.dedent("""
 Boolean flag to disable ranking option (RTP); cannot be used with other ranking flags.
 When selected, tests will run in pytest default order.
 """) #need to adapt this ending to use the RTS later
+
+DIFF_LEVEL_HELP = textwrap.dedent("""
+The levels at which the diff will be identified using Git.
+""") #make this better asap

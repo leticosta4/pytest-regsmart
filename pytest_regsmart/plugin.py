@@ -15,23 +15,25 @@ from . import extractor
 from . import reporter as reporter_mod
 from .const import (
     DEFAULT_HIST_LEN,
-    DEFAULT_LEVEL,
+    DEFAULT_RANK_LEVEL,
     DEFAULT_REPLAY,
     DEFAULT_SEED,
     DEFAULT_WEIGHT,
+    DEFAULT_DIFF_LEVEL,
 )
 from .help_strings import (
     HIST_LEN_HELP,
-    LEVEL_HELP,
+    RANK_LEVEL_HELP,
     NO_RANK_HELP,
     PLUGIN_HELP,
     REPLAY_HELP,
     SEED_HELP,
     WEIGHT_HELP,
+    DIFF_LEVEL_HELP,
 )
 from .monitor import Monitor
 from .ranking import rank_args, ranker
-from .selection import git_manager, selector
+from .selection import git_manager, selector, selection_args
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -40,7 +42,16 @@ def pytest_addoption(parser: Parser) -> None:
         "--regsmart", #was the old --rank flag that activated the pytest-ranking default
         action="store_true",
         help=PLUGIN_HELP)
-    
+
+    #new flag to keep both file/line options
+    group.addoption(
+        "--diff-level",
+        action="store",
+        type=selection_args.level_type,
+        default=DEFAULT_DIFF_LEVEL,
+        dest="diff_level",
+        help=DIFF_LEVEL_HELP)
+
     group._addoption(
         "--no-rank",
         action="store_true",
@@ -52,9 +63,9 @@ def pytest_addoption(parser: Parser) -> None:
         "--rank-level",
         action="store",
         type=rank_args.level_type,
-        default=DEFAULT_LEVEL,
+        default=DEFAULT_RANK_LEVEL,
         dest="rank_level",
-        help=LEVEL_HELP)
+        help=RANK_LEVEL_HELP)
 
     group._addoption(
         "--rank-weight",
@@ -88,10 +99,11 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_SEED,
         help=SEED_HELP)
 
+    parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL)
     parser.addini("no_rank", NO_RANK_HELP, default=False)
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
-    parser.addini("rank_level", LEVEL_HELP, default=DEFAULT_LEVEL)
+    parser.addini("rank_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL)
     parser.addini("rank_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
     parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
 
@@ -105,6 +117,7 @@ class PluginRunner:
         self.monitor = Monitor()
 
         self.branch = ""  # will be set after selection
+        self.diff_level = selection_args.parse_diff_level(config)
         self.no_rank = rank_args.parse_no_rank(config)
         self.weights = rank_args.parse_rtp_weights(config)
         self.level = rank_args.parse_rtp_level(config)
@@ -124,17 +137,17 @@ class PluginRunner:
             )
         
         selection_start_time = time.time()
-        selection = selector.run_rts()
+        selection = selector.run_rts() #vai passar a flag aqui e retorna dependendo do diff 
         self.branch = selection.branch
-        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time #vai entrar em condicional pra ver o tipo do diff
 
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
-            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
+            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]  #filters only per file now, probably gotaa setup a flag
 
         if not selection.has_diff:
             self.warnings.append(
-                "No diff detected: regression test selection was skipped."
+                "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
             )
             if self.no_rank:
                 self.warnings.append(
