@@ -30,8 +30,10 @@ from .help_strings import (
     WEIGHT_HELP,
 )
 from .monitor import Monitor
-from .ranking import rank_args, ranker
-from .selection import git_manager, selector
+from .ranking import ranker
+from .ranking import rank_args
+from .selection import selector
+from .selection import git_manager
 
 
 def pytest_addoption(parser: Parser) -> None:

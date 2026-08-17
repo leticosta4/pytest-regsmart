@@ -6,7 +6,7 @@ import pytest
 from git import Repo
 from git.exc import InvalidGitRepositoryError
 
-from pytest_regsmart.selection.git_manager import (
+from src.pytest_regsmart.selection.git_manager import (
     get_default_repo_branch,
     get_git_diff,
     verify_git_repo,
