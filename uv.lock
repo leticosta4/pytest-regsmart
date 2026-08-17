@@ -476,7 +476,7 @@ wheels = [
 
 [[package]]
 name = "pytest-regsmart"
-version = "0.3.4"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
