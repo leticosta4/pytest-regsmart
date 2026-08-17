@@ -52,6 +52,14 @@ Homepage = "https://github.com/leticosta4/pytest-regsmart"
 [project.entry-points."pytest11"]
 pytest_regsmart = "pytest_regsmart.plugin"
 
+[dependency-groups]
+dev = [
+  "tox",
+  "tox-uv",
+  "pytest-xdist",
+  "ruff",
+]
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"
