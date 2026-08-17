@@ -1,6 +1,6 @@
-from pytest_regsmart.selection.deps_graph import DependencyGraph
-from pytest_regsmart.selection.git_manager import DiffResult
-from pytest_regsmart.selection.selector import get_affected_tests
+from src.pytest_regsmart.selection.deps_graph import DependencyGraph
+from src.pytest_regsmart.selection.git_manager import DiffResult
+from src.pytest_regsmart.selection.selector import get_affected_tests
 
 
 def test_get_affected_tests_reaches_indirect_test_dependents():

@@ -131,7 +131,7 @@ pytest --regsmart --rank-hist-len=30
 ```
 
 The default value is 50.
-Note that `pytest-regsmart` does not store any historical test run logs, it merely updated its cached data from the previous run with data from the latest run.
+Note that `pytest-regsmart` does not store any historical test run logs, it merely updates its cached data from the previous run with data from the latest run.
 
 ### Running tests in random order
 
@@ -233,7 +233,8 @@ Contributions are very welcome.
 
 ## License
 
-Distributed under the terms of the [MIT](http://opensource.org/licenses/MIT) license, `pytest-regsmart` is free and open-source software.
+Distributed under the terms of the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html), `pytest-regsmart` is free and open-source software.
+See [NOTICE.md](./NOTICE.md) for attribution of the incorporated third-party code (pytest-ranking under the MIT License and pyan3 under the GPLv2+).
 
 ## Issues
 

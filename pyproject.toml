@@ -4,10 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytest-regsmart"
-version = "0.3.4"
+version = "0.6.1"
 description = "A Pytest plugin for faster fault detection via regression test prioritization and selection."
 readme = "README.md"
-license = { text = "MIT" }
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE", "NOTICE.md"]
 authors = [
   { name = "leticosta4", email = "leticiacostaoa@gmail.com" },
 ]
@@ -35,7 +36,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
   "Operating System :: OS Independent",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
 ]
 keywords = [
   "software testing",
@@ -50,6 +51,14 @@ Homepage = "https://github.com/leticosta4/pytest-regsmart"
 
 [project.entry-points."pytest11"]
 pytest_regsmart = "pytest_regsmart.plugin"
+
+[dependency-groups]
+dev = [
+  "tox",
+  "tox-uv",
+  "pytest-xdist",
+  "ruff",
+]
 
 [tool.ruff]
 line-length = 88
