@@ -63,10 +63,6 @@
 ----
 
 * Published version at PyPI (https://pypi.org/project/pytest-ranking/0.3.4/#history)
-
-0.3.3 (2024-04-08)
-----
-
 * Add replay option
 * Refine random order and test group level
 * Code refactoring
