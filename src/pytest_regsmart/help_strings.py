@@ -46,4 +46,6 @@ When selected, tests will run in pytest default order.
 
 DIFF_LEVEL_HELP = textwrap.dedent("""
 The levels at which the diff will be identified using Git.
+Default value is file, which means that the diff will be identified at the file level.
+If you want to identify the diff at the function level, you can set this option to function.
 """) #make this better asap
