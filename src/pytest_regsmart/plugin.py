@@ -14,26 +14,26 @@ from _pytest.terminal import TerminalReporter
 from . import extractor
 from . import reporter as reporter_mod
 from .const import (
+    DEFAULT_DIFF_LEVEL,
     DEFAULT_HIST_LEN,
     DEFAULT_RANK_LEVEL,
     DEFAULT_REPLAY,
     DEFAULT_SEED,
     DEFAULT_WEIGHT,
-    DEFAULT_DIFF_LEVEL,
 )
 from .help_strings import (
+    DIFF_LEVEL_HELP,
     HIST_LEN_HELP,
-    RANK_LEVEL_HELP,
     NO_RANK_HELP,
     PLUGIN_HELP,
+    RANK_LEVEL_HELP,
     REPLAY_HELP,
     SEED_HELP,
     WEIGHT_HELP,
-    DIFF_LEVEL_HELP,
 )
 from .monitor import Monitor
 from .ranking import rank_args, ranker
-from .selection import git_manager, selector, selection_args
+from .selection import git_manager, selection_args, selector
 
 
 def pytest_addoption(parser: Parser) -> None:

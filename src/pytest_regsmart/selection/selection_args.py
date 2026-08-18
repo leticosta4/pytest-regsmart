@@ -2,6 +2,7 @@ import argparse
 
 from ..const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
+
 def level_type(string: str) -> str:
     "Check level format."
     if string == DEFAULT_DIFF_LEVEL:
