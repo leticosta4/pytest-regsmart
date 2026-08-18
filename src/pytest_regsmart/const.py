@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 
 # ------ Constants ------
@@ -32,3 +33,5 @@ class DIFF_LEVEL(str, Enum):
     FILE = "file"
 
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FILE #for now... i'll change it later
+
+DIFF_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
