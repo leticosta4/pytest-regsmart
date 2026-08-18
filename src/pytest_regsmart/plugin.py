@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_REPLAY,
     DEFAULT_SEED,
     DEFAULT_WEIGHT,
+    DIFF_LEVEL,
 )
 from .help_strings import (
     DIFF_LEVEL_HELP,
@@ -130,6 +131,11 @@ class PluginRunner:
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if not self.config.getoption("--regsmart"):
             return
+
+        if self.diff_level not in (level.value for level in DIFF_LEVEL):
+            raise argparse.ArgumentTypeError(
+                f"Invalid diff level: {self.diff_level}. {DIFF_LEVEL_HELP}"
+            )
 
         if self.replay_file and self.weights == [0, 0]:
             raise argparse.ArgumentTypeError( #or usage error
