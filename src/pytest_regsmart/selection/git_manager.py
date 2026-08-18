@@ -63,11 +63,12 @@ def _is_deleted(repo: Repo, merge_base_hash: str, path: str) -> bool:
 
 def get_git_diff(repo_path: str = ".") -> DiffResult:
     repo = resolve_repo(repo_path=repo_path)
+    untracked_diff = repo.untracked_files
 
     if not repo.head.is_valid(): #repo has no commits yet (just git init); only check the untracked diff
         return DiffResult(
             modified_files=[],
-            untracked_files=repo.untracked_files,
+            untracked_files=untracked_diff,
             used_branch=""
         )
 
@@ -76,7 +77,7 @@ def get_git_diff(repo_path: str = ".") -> DiffResult:
     merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
     working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
     deleted_files = [path for path in working_dir_diff if _is_deleted(repo, merge_base_commit.hexsha, path)]
-    untracked_diff = repo.untracked_files
+    
 
     return DiffResult(
         modified_files=working_dir_diff,
