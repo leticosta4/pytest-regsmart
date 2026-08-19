@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 from pyan.modvis import ImportVisitor
 
+# from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+
 from .git_manager import resolve_repo
 
 #initially I'll try the simplest form using only files; functions are not needed yet
@@ -29,7 +31,7 @@ def _find_py_files(working_dir: str) -> list[str]:
     return py_files
 
 
-def _build_module_relative_path(fullpaths, working_dir: str) -> dict[str, str]:
+def _convert_module_to_relative_path(fullpaths, working_dir: str) -> dict[str, str]:
     """Convert pyan3 module names to paths relative to the repo (to match the diff).
 
     E.g.: "pytest_regsmart.selector" -> "pytest_regsmart/selector.py"
@@ -43,7 +45,7 @@ def _build_module_relative_path(fullpaths, working_dir: str) -> dict[str, str]:
 def _invert_dependency_graph(
         module_imports: dict[str, set[str]],
         module_to_path: dict[str, str]
-    ) -> DependencyGraph:
+    ) -> dict[str, set[str]]:
     """Invert 'module imports X' into 'file X is used by module'.
 
     E.g.: if plugin.py imports selector.py, the result contains
@@ -61,19 +63,32 @@ def _invert_dependency_graph(
             dependents[imported_path].add(importer_path)
 
 
-    return DependencyGraph(dependents=dict(dependents))
+    return dict(dependents)
 
 
-def get_dependency_graph(repo_path: str = ".") -> DependencyGraph:
-    repo = resolve_repo(repo_path)
-    working_dir = repo.working_tree_dir
-    python_files = _find_py_files(working_dir)
-
+def _build_file_dependency_graph(
+    python_files: list[str],
+    working_dir: str,
+) -> DependencyGraph:
     graph = ImportVisitor(filenames=python_files, logger=logging.getLogger(__name__), root=working_dir)
     #graph.modules: module -> set of modules imported by it
     #graph.fullpaths: module -> absolute file path
 
-    module_to_path = _build_module_relative_path(graph.fullpaths, working_dir)
-    dependents_by_file = _invert_dependency_graph(graph.modules, module_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
+    module_to_path = _convert_module_to_relative_path(graph.fullpaths, working_dir)
+    dependents = _invert_dependency_graph(graph.modules, module_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
+
+    return DependencyGraph(dependents=dependents)
+
+
+def get_dependency_graph(
+    repo_path: str = ".",
+    #graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+) -> DependencyGraph:
+    repo = resolve_repo(repo_path)
+    working_dir = repo.working_tree_dir
+    python_files = _find_py_files(working_dir)
+
+    # if graph_level == DIFF_LEVEL.FUNCTION:
+    #     return _build_function_dependency_graph(python_files, working_dir)
     
-    return dependents_by_file
+    return _build_file_dependency_graph(python_files, working_dir)

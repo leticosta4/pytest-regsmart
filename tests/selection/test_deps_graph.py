@@ -6,8 +6,7 @@ from pathlib import Path
 from pytest import mark
 
 from src.pytest_regsmart.selection.deps_graph import (
-    DependencyGraph,
-    _build_module_relative_path,
+    _convert_module_to_relative_path,
     _find_py_files,
     _invert_dependency_graph,
     get_dependency_graph,
@@ -56,17 +55,17 @@ def test_find_py_files_excludes_env_and_build_dirs(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _build_module_relative_path
+# _convert_module_to_relative_path
 # ---------------------------------------------------------------------------
 
 
-def test_build_module_relative_path(tmp_path):
+def test_convert_module_to_relative_path(tmp_path):
     fullpaths = {
         "pkg.mod": str(tmp_path / "pkg" / "mod.py"),
         "pkg": str(tmp_path / "pkg" / "__init__.py"),
     }
 
-    result = _build_module_relative_path(fullpaths, str(tmp_path))
+    result = _convert_module_to_relative_path(fullpaths, str(tmp_path))
 
     assert result == {
         "pkg.mod": os.path.join("pkg", "mod.py"),
@@ -126,7 +125,7 @@ def test_build_module_relative_path(tmp_path):
 def test_invert_dependency_graph_cases(module_imports,module_to_path,expected_dependents):
     graph = _invert_dependency_graph(module_imports, module_to_path)
     
-    assert graph == DependencyGraph(dependents=expected_dependents)
+    assert graph == expected_dependents
 
 
 # ---------------------------------------------------------------------------
