@@ -24,6 +24,9 @@ class RANK_LEVEL(str, Enum):
     FUNCTION = "function"
     MODULE = "module"
 
+    def __str__(self) -> str:
+        return self.value
+
 DEFAULT_RANK_LEVEL = RANK_LEVEL.PUT
 
 
@@ -31,6 +34,9 @@ class DIFF_LEVEL(str, Enum):
     """The level at which the diff is identified."""
     FUNCTION = "function"
     FILE = "file"
+
+    def __str__(self) -> str:
+        return self.value
 
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FILE #for now... i'll change it later
 
