@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
+from pyan.analyzer import CallGraphVisitor
 from pytest import mark
 
+from pytest_regsmart.const import DIFF_LEVEL
 from src.pytest_regsmart.selection.deps_graph import (
-    DependencyGraph,
-    _build_module_relative_path,
+    FunctionMetadata,
+    _convert_module_to_relative_path,
+    _extract_function_nodes,
     _find_py_files,
-    _invert_dependency_graph,
+    _invert_dependency_map,
     get_dependency_graph,
 )
 
@@ -56,17 +60,17 @@ def test_find_py_files_excludes_env_and_build_dirs(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _build_module_relative_path
+# _convert_module_to_relative_path
 # ---------------------------------------------------------------------------
 
 
-def test_build_module_relative_path(tmp_path):
+def test_convert_module_to_relative_path(tmp_path):
     fullpaths = {
         "pkg.mod": str(tmp_path / "pkg" / "mod.py"),
         "pkg": str(tmp_path / "pkg" / "__init__.py"),
     }
 
-    result = _build_module_relative_path(fullpaths, str(tmp_path))
+    result = _convert_module_to_relative_path(fullpaths, str(tmp_path))
 
     assert result == {
         "pkg.mod": os.path.join("pkg", "mod.py"),
@@ -75,7 +79,7 @@ def test_build_module_relative_path(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _invert_dependency_graph
+# _invert_dependency_map
 # ---------------------------------------------------------------------------
 
 @mark.parametrize(
@@ -121,12 +125,65 @@ def test_build_module_relative_path(tmp_path):
             {
                 "app/service.py": {"app/main.py"},
             },
+        ),
+        (
+            {
+                "a.f": {"b.g", "c.h"},
+                "b.g": {"c.h"},
+            },
+            None,
+            {
+                "b.g": {"a.f"},
+                "c.h": {"a.f", "b.g"},
+            },
         ), 
     ])
-def test_invert_dependency_graph_cases(module_imports,module_to_path,expected_dependents):
-    graph = _invert_dependency_graph(module_imports, module_to_path)
+def test_invert_dependency_map_cases(module_imports,module_to_path,expected_dependents):
+    graph = _invert_dependency_map(module_imports, module_to_path)
     
-    assert graph == DependencyGraph(dependents=expected_dependents)
+    assert graph == expected_dependents
+
+
+# ---------------------------------------------------------------------------
+# _extract_function_nodes
+# ---------------------------------------------------------------------------
+
+
+def test_extract_function_nodes_keeps_classes_and_methods(tmp_path):
+    _write(tmp_path, "pkg/__init__.py")
+    _write(
+        tmp_path,
+        "pkg/mod.py",
+        "class Calculator:\n"
+        "    def add(self, a, b):\n"
+        "        return a + b\n"
+        "\n"
+        "def make_calc():\n"
+        "    return Calculator()\n",
+    )
+
+    graph = CallGraphVisitor(
+        filenames=[str(tmp_path / "pkg" / "mod.py")],
+        root=str(tmp_path),
+        logger=logging.getLogger(__name__),
+    )
+    nodes = _extract_function_nodes(graph, str(tmp_path))
+
+    assert set(nodes) == {
+        "pkg.mod.Calculator",
+        "pkg.mod.Calculator.add",
+        "pkg.mod.make_calc",
+    }
+    assert nodes["pkg.mod.Calculator.add"] == FunctionMetadata(
+        filepath=os.path.join("pkg", "mod.py"),
+        start_line=2,
+        end_line=3,
+    )
+    assert nodes["pkg.mod.make_calc"] == FunctionMetadata(
+        filepath=os.path.join("pkg", "mod.py"),
+        start_line=5,
+        end_line=6,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -198,3 +255,80 @@ def test_get_dependency_graph_defaults_to_dot_repo(monkeypatch, git_repo):
         "mypkg/main.py",
         "tests/test_app.py",
     }
+
+
+# ---------------------------------------------------------------------------
+# get_dependency_graph (function-level)
+# ---------------------------------------------------------------------------
+
+
+def _build_function_sample_project(repo):
+    root = Path(repo.working_tree_dir)
+    _write(root, "mypkg/__init__.py")
+    _write(
+        root,
+        "mypkg/service.py",
+        "import os\n"
+        "\n"
+        "def run():\n"
+        "    return os.getcwd()\n"
+        "\n"
+        "def helper():\n"
+        "    return 42\n",
+    )
+    _write(
+        root,
+        "mypkg/main.py",
+        "from .service import run\n"
+        "\n"
+        "def main():\n"
+        "    return run()\n",
+    )
+    _write(
+        root,
+        "tests/test_app.py",
+        "from mypkg.service import run, helper\n"
+        "\n"
+        "def test_app():\n"
+        "    assert run()\n"
+        "\n"
+        "def test_helper():\n"
+        "    assert helper()\n",
+    )
+
+
+def test_get_function_dependency_graph_end_to_end(git_repo):
+    _build_function_sample_project(git_repo)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FUNCTION)
+
+    assert graph.dependents == {
+        "mypkg.service.run": {"mypkg.main.main", "tests.test_app.test_app"},
+        "mypkg.service.helper": {"tests.test_app.test_helper"},
+    }
+
+
+def test_get_function_dependency_graph_keys_are_unit_ids(git_repo):
+    _build_function_sample_project(git_repo)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FUNCTION)
+
+    assert "mypkg/service.py" not in graph.dependents
+    assert all("/" not in key and not key.endswith(".py") for key in graph.dependents)
+    assert set(graph.dependents) <= set(graph.function_nodes)
+
+
+def test_get_function_dependency_graph_locations(git_repo):
+    _build_function_sample_project(git_repo)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FUNCTION)
+
+    assert graph.function_nodes["mypkg.service.run"] == FunctionMetadata(
+        filepath="mypkg/service.py", start_line=3, end_line=4
+    )
+    assert graph.function_nodes["mypkg.service.helper"] == FunctionMetadata(
+        filepath="mypkg/service.py", start_line=6, end_line=7
+    )
+    assert graph.function_nodes["tests.test_app.test_helper"] == FunctionMetadata(
+        filepath="tests/test_app.py", start_line=6, end_line=7
+    )
