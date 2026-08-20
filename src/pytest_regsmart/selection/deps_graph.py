@@ -3,20 +3,66 @@ from __future__ import annotations
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from pyan.analyzer import CallGraphVisitor
 from pyan.modvis import ImportVisitor
+from pyan.node import Flavor
 
-# from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from .git_manager import resolve_repo
 
 #initially I'll try the simplest form using only files; functions are not needed yet
 #use the pyan3 API, not the CLI
 
+_KEPT_FLAVORS = {
+    Flavor.FUNCTION,
+    Flavor.METHOD,
+    Flavor.CLASSMETHOD,
+    Flavor.STATICMETHOD,
+    Flavor.CLASS,
+}  #only functions, methods and classes on the fucntion callgraph (classes because of internal methods that can be desconsidered in git diff)
+
+
+@dataclass(frozen=True, slots=True)
+class FunctionMetadata:
+    filepath: str
+    start_line: int
+    end_line: int
+
+
 @dataclass
 class DependencyGraph:
-    dependents: dict[str, set[str]]  #key: module, value: set of modules that depend on / are affected by it
+    dependents: dict[str, set[str]]  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
+    function_nodes: dict[str, FunctionMetadata] = field(default_factory=dict)  #the key represents the funcion name/node name
+
+    
+def _extract_function_nodes(
+    graph: CallGraphVisitor,
+    working_dir: str,
+) -> dict[str, FunctionMetadata]:
+    """Filters and converts pyan3 nodes into simpler function nodes indexed by name"""
+
+    function_nodes: dict[str, FunctionMetadata] = {}
+
+    for node_group in graph.nodes.values():
+        for node in node_group:
+            if node.flavor not in _KEPT_FLAVORS or node.ast_node is None:
+                continue
+
+            filepath = os.path.relpath(node.filename, working_dir)
+            if filepath.startswith(".."):
+                continue
+
+            function_name = node.get_name()  #combines the module (node.namespace) and the function name (node.name)
+            function_nodes[function_name] = FunctionMetadata(
+                filepath=filepath,
+                start_line=node.ast_node.lineno,
+                end_line=node.ast_node.end_lineno,
+            )
+
+    return function_nodes
 
 
 def _find_py_files(working_dir: str) -> list[str]:
@@ -42,26 +88,33 @@ def _convert_module_to_relative_path(fullpaths, working_dir: str) -> dict[str, s
     }
 
 
-def _invert_dependency_graph(
-        module_imports: dict[str, set[str]],
-        module_to_path: dict[str, str]
+def _invert_dependency_map(
+        connections: dict[str, set[str]],
+        module_to_path: dict[str, str] | None = None # only necessary for file-level graphs
     ) -> dict[str, set[str]]:
-    """Invert 'module imports X' into 'file X is used by module'.
+    """Invert 'Y imports X' into 'X is used by Y'.
 
     E.g.: if plugin.py imports selector.py, the result contains
-    selector.py -> {plugin.py} (changing selector.py affects plugin.py)
+    selector.py -> {plugin.py} (changing selector.py affects plugin.py); OR changing run affects test_run()
+    
+    With module_to_path: translates module names to relative paths (file-level graph)
+        e.g.: "pytest_regsmart.selector" -> "pytest_regsmart/selector.py"
+    Without module_to_path: keeps ids (functions references) as-is (function-level graph)
+        e.g.: "pytest_regsmart.selector:selector" -> "pytest_regsmart.selector:plugin" (changing selector affects plugin)
     """
 
     dependents = defaultdict(set) #dict that does not raise KeyError on missing keys; a dict subclass: https://www.geeksforgeeks.org/python/defaultdict-in-python/
 
-    for importer, imported_modules in module_imports.items():
-        importer_path = module_to_path.get(importer)
-        for imported in imported_modules:
-            imported_path = module_to_path.get(imported)
+    for importer, dependencies in connections.items():
+        importer_path = importer if module_to_path is None else module_to_path.get(importer)
+        if importer_path is None:
+            continue  #importer is not in the repo - just a precaution, should not happen
+
+        for imported in dependencies:
+            imported_path = imported if module_to_path is None else module_to_path.get(imported)
             if imported_path is None:
                 continue  #doesnt import a file in the repo
             dependents[imported_path].add(importer_path)
-
 
     return dict(dependents)
 
@@ -75,20 +128,52 @@ def _build_file_dependency_graph(
     #graph.fullpaths: module -> absolute file path
 
     module_to_path = _convert_module_to_relative_path(graph.fullpaths, working_dir)
-    dependents = _invert_dependency_graph(graph.modules, module_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
+    dependents = _invert_dependency_map(graph.modules, module_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
 
     return DependencyGraph(dependents=dependents)
 
 
+def _build_function_dependency_graph(
+    python_files: list[str],
+    working_dir: str,
+) -> DependencyGraph:
+    graph = CallGraphVisitor(
+        filenames=python_files,
+        root=working_dir,
+        logger=logging.getLogger(__name__),
+    )
+
+    function_nodes = _extract_function_nodes(graph, working_dir)
+
+    function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
+
+    for function_node, dependency_nodes in graph.uses_edges.items():
+        function_name = function_node.get_name()
+        if function_name not in function_nodes:
+            continue  #skip nodes that are not functions/methods/classes
+
+        for dependency in dependency_nodes:
+            dependency_name = dependency.get_name()
+            if dependency_name in function_nodes:
+                function_dependencies[function_name].add(dependency_name)
+
+    dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
+
+    return DependencyGraph(
+        dependents=dependents,
+        function_nodes=function_nodes,
+    )
+
+
 def get_dependency_graph(
     repo_path: str = ".",
-    #graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
     python_files = _find_py_files(working_dir)
 
-    # if graph_level == DIFF_LEVEL.FUNCTION:
-    #     return _build_function_dependency_graph(python_files, working_dir)
+    if graph_level == DIFF_LEVEL.FUNCTION:
+        return _build_function_dependency_graph(python_files, working_dir)
     
     return _build_file_dependency_graph(python_files, working_dir)
