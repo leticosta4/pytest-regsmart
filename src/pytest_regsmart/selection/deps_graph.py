@@ -36,15 +36,17 @@ class FunctionMetadata:
 class DependencyGraph:
     dependents: dict[str, set[str]]  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
     function_nodes: dict[str, FunctionMetadata] = field(default_factory=dict)  #the key represents the funcion name/node name
+    functions_by_file: dict[str, set[str]] = field(default_factory=dict)
 
     
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
-) -> dict[str, FunctionMetadata]:
+) -> tuple[dict[str, FunctionMetadata], dict[str, set[str]]]:
     """Filters and converts pyan3 nodes into simpler function nodes indexed by name"""
 
     function_nodes: dict[str, FunctionMetadata] = {}
+    functions_by_file: dict[str, set[str]] = defaultdict(set)
 
     for node_group in graph.nodes.values():
         for node in node_group:
@@ -61,11 +63,12 @@ def _extract_function_nodes(
                 start_line=node.ast_node.lineno,
                 end_line=node.ast_node.end_lineno,
             )
+            functions_by_file[filepath].add(function_name)
 
-    return function_nodes
+    return function_nodes, dict(functions_by_file)
 
 
-def _find_py_files(working_dir: str) -> list[str]:
+def _find_py_files(working_dir: str) -> list[str]: #mudar para utils talvez 
     excludes = [".venv", ".git", "__pycache__", "dist", "build", "venv", "site-packages"]
 
     py_files = []
@@ -143,7 +146,7 @@ def _build_function_dependency_graph(
         logger=logging.getLogger(__name__),
     )
 
-    function_nodes = _extract_function_nodes(graph, working_dir)
+    function_nodes, functions_by_files = _extract_function_nodes(graph, working_dir)
 
     function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
 
@@ -162,6 +165,7 @@ def _build_function_dependency_graph(
     return DependencyGraph(
         dependents=dependents,
         function_nodes=function_nodes,
+        functions_by_file=functions_by_files
     )
 
 
