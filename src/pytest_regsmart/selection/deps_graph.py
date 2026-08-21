@@ -12,6 +12,7 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from .git_manager import resolve_repo
+from ..utils import _find_py_files
 
 #initially I'll try the simplest form using only files; functions are not needed yet
 #use the pyan3 API, not the CLI
@@ -66,18 +67,6 @@ def _extract_function_nodes(
             functions_by_file[filepath].add(function_name)
 
     return function_nodes, dict(functions_by_file)
-
-
-def _find_py_files(working_dir: str) -> list[str]: #mudar para utils talvez 
-    excludes = [".venv", ".git", "__pycache__", "dist", "build", "venv", "site-packages"]
-
-    py_files = []
-    for dirpath, dirnames, filenames in os.walk(working_dir):
-        dirnames[:] = [d for d in dirnames if d not in excludes and not d.endswith(".egg-info")]  # keep only core directories to check
-        for filename in filenames:
-            if filename.endswith(".py"):
-                py_files.append(os.path.join(dirpath, filename)) #build the full path
-    return py_files
 
 
 def _convert_module_to_relative_path(fullpaths, working_dir: str) -> dict[str, str]:

@@ -7,6 +7,7 @@ from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
+from ..utils import _is_test_file
 
 
 @dataclass
@@ -14,11 +15,6 @@ class SelectionResult:
     affected_tests: list[str]
     has_diff: bool
     branch: str
-
-
-def _is_test_file(filepath: str) -> bool: #mudar para utils
-    filename = os.path.basename(filepath)
-    return filename.startswith("test_") or filename.endswith("_test.py")
 
 
 def line_diff_match_function_ids(
