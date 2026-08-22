@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
+from ..utils import _is_test_file
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
-from ..utils import _is_test_file
 
 
 @dataclass
@@ -94,15 +94,31 @@ def _get_affected_tests_at_function_level(
     changed_function_ids = line_diff_match_function_ids(diff_result, deps_graph)
     affected_function_ids = _get_affected_nodes(changed_function_ids, deps_graph)
 
-    # The pytest integration still filters collected items by test *file*.
-    # Keep that public contract here even though propagation occurs per function.
+    # pytest filters collected items by their nodeid. A function graph id uses
+    # dotted Python names, while pytest uses ``path.py::Class::test``.
     return sorted(
         {
-            deps_graph.function_nodes[function_id].filepath
+            _function_id_to_pytest_nodeid(
+                function_id, deps_graph.function_nodes[function_id].filepath
+            )
             for function_id in affected_function_ids
             if _is_test_file(deps_graph.function_nodes[function_id].filepath)
         }
     )
+
+
+def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
+    """Translate a pyan3 function id into the equivalent pytest nodeid.
+    
+    tests.selection.test_selector.py.test_regsmart_requires_git_repo =>>
+    tests/selection/test_selector.py::test_regsmart_requires_git_repo
+    """
+
+
+    module_name = os.path.splitext(filepath)[0].replace(os.sep, ".")
+    qualified_name = function_id.removeprefix(f"{module_name}.")
+
+    return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
 def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> SelectionResult:
