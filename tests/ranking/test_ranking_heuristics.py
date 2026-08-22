@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from pytest_regsmart.ranking.rank_args import min_max_normalization
 from tests.fake_test_data import test_class_one, test_method_one
+
+
+def test_min_max_normalization_accepts_empty_input():
+    assert min_max_normalization([]).tolist() == []
 
 
 def test_default(mytester):

@@ -62,6 +62,8 @@ def replay_type(string: str) -> str:
 
 def min_max_normalization(x: list[float]) -> np.ndarray:
     x = np.array(x)
+    if x.size == 0:
+        return x
     x_range = (np.max(x) - np.min(x))
     x = (x - np.min(x)) / x_range if x_range else np.zeros(len(x))
     return x
