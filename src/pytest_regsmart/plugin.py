@@ -143,15 +143,28 @@ class PluginRunner:
             )
         
         selection_start_time = time.time()
-        selection = selector.run_rts() #vai passar a flag aqui e retorna dependendo do diff 
+        selection = selector.run_rts(level=self.diff_level) #vai passar a flag aqui e retorna dependendo do diff 
         self.branch = selection.branch
         self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time #vai entrar em condicional pra ver o tipo do diff
 
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
-            items[:] = [item for item in items if item.nodeid.split("::")[0] in selected_nodes]  #filters only per file now, probably gotaa setup a flag
 
-        if not selection.has_diff:
+            items[:] = (
+                [item for item in items if item.nodeid.split("::")[0] in selected_nodes] if self.diff_level == DIFF_LEVEL.FILE
+                else [
+                        item
+                        for item in items
+                        if any(
+                            item.nodeid == selected_node
+                            or item.nodeid.startswith(f"{selected_node}[")
+                            for selected_node in selected_nodes
+                        )
+                    ]
+            )
+
+
+        if not selection.has_diff:  #this should be moved to the beggining though 
             self.warnings.append(
                 "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
             )
