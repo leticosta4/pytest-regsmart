@@ -23,9 +23,7 @@ def line_diff_match_function_ids(
 ) -> set[str]:
     """Project changed diff lines onto function-level call graph nodes.
     Hunks outside every function (imports, constants) or files without 
-    specific range (untracked, sem entrada em changed_line_ranges) caem
-    de volta para "todas as funções do arquivo" como aproximação conservadora.
-    """
+    specific range fallback to the entire file"""
     changed: set[str] = set()
 
     no_range_files = (
@@ -47,7 +45,7 @@ def line_diff_match_function_ids(
                 if start <= deps_graph.function_nodes[fid].end_line
                 and deps_graph.function_nodes[fid].start_line <= end
             }
-            changed.update(matched or candidates)  # sem match preciso -> conservador
+            changed.update(matched or candidates)  #not a specific match
 
     return changed
 

@@ -1,7 +1,7 @@
 import os
 
 
-def _find_py_files(working_dir: str) -> list[str]: #mudar para utils talvez 
+def _find_py_files(working_dir: str) -> list[str]: 
     excludes = [".venv", ".git", "__pycache__", "dist", "build", "venv", "site-packages"]
 
     py_files = []
@@ -13,6 +13,6 @@ def _find_py_files(working_dir: str) -> list[str]: #mudar para utils talvez
     return py_files
 
 
-def _is_test_file(filepath: str) -> bool: #mudar para utils
+def _is_test_file(filepath: str) -> bool:
     filename = os.path.basename(filepath)
     return filename.startswith("test_") or filename.endswith("_test.py")

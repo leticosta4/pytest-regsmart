@@ -143,9 +143,9 @@ class PluginRunner:
             )
         
         selection_start_time = time.time()
-        selection = selector.run_rts(level=self.diff_level) #vai passar a flag aqui e retorna dependendo do diff 
+        selection = selector.run_rts(level=self.diff_level)
         self.branch = selection.branch
-        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time #vai entrar em condicional pra ver o tipo do diff
+        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
 
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
