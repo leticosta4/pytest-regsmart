@@ -132,11 +132,6 @@ class PluginRunner:
         if not self.config.getoption("--regsmart"):
             return
 
-        if self.diff_level not in (level.value for level in DIFF_LEVEL):
-            raise argparse.ArgumentTypeError(
-                f"Invalid diff level: {self.diff_level}. {DIFF_LEVEL_HELP}"
-            )
-
         if self.replay_file and self.weights == [0, 0]:
             raise argparse.ArgumentTypeError( #or usage error
                 "--rank-replay cannot be used together with random order."

@@ -26,10 +26,10 @@ def line_diff_match_function_ids(
     specific range fallback to the entire file"""
     changed: set[str] = set()
 
-    no_range_files = (
+    no_range_files = ( 
         set(diff_result.untracked_files)
         | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
-    ) #checar se isso realmente funciona
+    ) #maybe broken
 
     for filepath in no_range_files:
         changed.update(deps_graph.functions_by_file.get(filepath, set()))
