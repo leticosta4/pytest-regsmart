@@ -339,3 +339,13 @@ def test_get_function_dependency_graph_locations(git_repo):
     assert graph.function_nodes["tests.test_app.test_helper"] == FunctionMetadata(
         filepath="tests/test_app.py", start_line=6, end_line=7
     )
+
+
+def test_get_dependency_graph_defaults_to_function_level(git_repo):
+    _build_function_sample_project(git_repo)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir)
+
+    assert "mypkg.service.run" in graph.dependents
+    assert graph.function_nodes
+    assert "mypkg/service.py" not in graph.dependents
