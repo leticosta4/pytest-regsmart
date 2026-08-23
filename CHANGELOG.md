@@ -8,10 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-## [0.6.2] - 2026-08-21
+## [0.6.2] - 2026-08-22
  
 ### Added
-- New `--diff-level` flag to choose the diff granularity: `file` (default) or `function`
+- New `--diff-level` flag to choose the diff granularity: `function`pr (default) or `file`
 - Track deleted files in the diff result
 ## [0.6.1] - 2026-08-11
  

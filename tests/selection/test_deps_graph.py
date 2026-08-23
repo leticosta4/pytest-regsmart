@@ -167,7 +167,7 @@ def test_extract_function_nodes_keeps_classes_and_methods(tmp_path):
         root=str(tmp_path),
         logger=logging.getLogger(__name__),
     )
-    nodes = _extract_function_nodes(graph, str(tmp_path))
+    nodes, functions_by_file = _extract_function_nodes(graph, str(tmp_path))
 
     assert set(nodes) == {
         "pkg.mod.Calculator",
@@ -184,6 +184,13 @@ def test_extract_function_nodes_keeps_classes_and_methods(tmp_path):
         start_line=5,
         end_line=6,
     )
+    assert functions_by_file == {
+        os.path.join("pkg", "mod.py"): {
+            "pkg.mod.Calculator",
+            "pkg.mod.Calculator.add",
+            "pkg.mod.make_calc",
+        }
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +215,7 @@ def _build_sample_project(repo):
 def test_get_dependency_graph_end_to_end(git_repo):
     _build_sample_project(git_repo)
 
-    graph = get_dependency_graph(git_repo.working_tree_dir)
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
 
     assert graph.dependents["mypkg/service.py"] == {
         "mypkg/main.py",
@@ -249,7 +256,7 @@ def test_get_dependency_graph_defaults_to_dot_repo(monkeypatch, git_repo):
         "src.pytest_regsmart.selection.deps_graph.resolve_repo", lambda repo_path=".": git_repo
     )
 
-    graph = get_dependency_graph()
+    graph = get_dependency_graph(graph_level=DIFF_LEVEL.FILE)
 
     assert graph.dependents["mypkg/service.py"] == {
         "mypkg/main.py",
