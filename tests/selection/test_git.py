@@ -254,7 +254,7 @@ def test_get_git_diff_changed_line_ranges_edits(git_repo, commit_file, original,
     git_repo.git.branch("-m", "main")
     (Path(git_repo.working_tree_dir) / "file.py").write_text(edited)
 
-    assert get_git_diff(str(git_repo.working_tree_dir), graph_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == expected
+    assert get_git_diff(str(git_repo.working_tree_dir), diff_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == expected
 
 
 def test_get_git_diff_changed_line_ranges_committed_on_feature_branch(git_repo, commit_file):
@@ -266,7 +266,7 @@ def test_get_git_diff_changed_line_ranges_committed_on_feature_branch(git_repo, 
     git_repo.index.add("file.py")
     git_repo.index.commit("edit line 2")
 
-    assert get_git_diff(str(git_repo.working_tree_dir), graph_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {"file.py": [(2, 2)]}
+    assert get_git_diff(str(git_repo.working_tree_dir), diff_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {"file.py": [(2, 2)]}
 
 
 def test_get_git_diff_changed_line_ranges_deleted_file_absent(git_repo, commit_file):
@@ -274,13 +274,13 @@ def test_get_git_diff_changed_line_ranges_deleted_file_absent(git_repo, commit_f
     git_repo.git.branch("-m", "main")
     os.remove(Path(git_repo.working_tree_dir) / "file.py")
 
-    assert get_git_diff(str(git_repo.working_tree_dir), graph_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {}
+    assert get_git_diff(str(git_repo.working_tree_dir), diff_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {}
 
 
 def test_get_git_diff_changed_line_ranges_no_commits(tmp_path):
     Repo.init(tmp_path)
 
-    assert get_git_diff(str(tmp_path), graph_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {}
+    assert get_git_diff(str(tmp_path), diff_level=DIFF_LEVEL.FUNCTION).changed_line_ranges == {}
 
 
 def test_get_git_diff_deleted_file(git_repo, commit_file):

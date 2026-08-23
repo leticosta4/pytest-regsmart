@@ -6,7 +6,6 @@ from tests.fake_test_data import test_method_one
 
 
 def _ran_files(out) -> list[str]:
-    """Arquivos de teste que apareceram como resultado no run (PASSED/FAILED)."""
     return sorted(
         {
             line.split("::")[0]
@@ -16,8 +15,22 @@ def _ran_files(out) -> list[str]:
     )
 
 
+def _ran_nodeids(out) -> list[str]:
+    return sorted(
+        line.split(" ")[0]
+        for line in out.outlines
+        if "::" in line and "PASSED" in line
+    )
+
+
 def _change(repo, filename: str, content: str) -> None:
     (Path(repo.working_tree_dir) / filename).write_text(content)
+
+
+def _commit_new_file(repo, filename: str, content: str) -> None:
+    (Path(repo.working_tree_dir) / filename).write_text(content)
+    repo.index.add([filename])
+    repo.index.commit(f"Add {filename}")
 
 
 def test_regsmart_requires_git_repo(pytester):
@@ -38,6 +51,119 @@ def test_selection_no_rank_only_affected_in_collection_order(selection_project):
     out.assert_outcomes(passed=3)
     assert _ran_files(out) == ["test_other.py", "test_service.py"]
     assert any("Using --no-rank (RTP disabled)." in x for x in out.outlines)
+
+
+def test_function_level_selection_keeps_only_affected_test_functions(
+        selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "--diff-level=function", "--no-rank"
+    )
+
+    out.assert_outcomes(passed=3)
+    assert _ran_files(out) == ["test_other.py", "test_service.py"]
+
+
+def test_function_level_selection_can_be_ranked(selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--diff-level=function")
+
+    out.assert_outcomes(passed=3)
+    assert _ran_files(out) == ["test_other.py", "test_service.py"]
+
+
+def test_function_level_selects_only_tests_of_changed_function(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_extra.py",
+        "from extra import alpha, beta\n"
+        "\n"
+        'def test_alpha():\n    assert alpha() == "a"\n'
+        "\n"
+        'def test_beta():\n    assert beta() == "b"\n',
+    )
+    _change(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"  # touched\n',
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--diff-level=function", "--no-rank")
+
+    out.assert_outcomes(passed=1)
+    assert _ran_nodeids(out) == ["test_extra.py::test_beta"]
+
+
+def test_function_level_runs_parametrized_variants_of_selected_node(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "test_params.py",
+        "import pytest\n"
+        "from service import run\n"
+        "\n"
+        '@pytest.mark.parametrize("value", [10, 20])\n'
+        "def test_run_value(value):\n"
+        "    assert run() == 42\n",
+    )
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--diff-level=function", "--no-rank")
+
+    out.assert_outcomes(passed=5)
+    nodeids = _ran_nodeids(out)
+    assert "test_params.py::test_run_value[10]" in nodeids
+    assert "test_params.py::test_run_value[20]" in nodeids
+
+
+def test_diff_level_ini_option_used_when_cli_absent(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_extra.py",
+        "from extra import alpha, beta\n"
+        "\n"
+        'def test_alpha():\n    assert alpha() == "a"\n'
+        "\n"
+        'def test_beta():\n    assert beta() == "b"\n',
+    )
+    _change(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"  # touched\n',
+    )
+    (Path(repo.working_tree_dir) / "pytest.ini").write_text(
+        "[pytest]\nconsole_output_style = classic\ndiff_level = file\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=2)
+    assert _ran_files(out) == ["test_extra.py"]
+
+
+def test_report_header_shows_diff_level(selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("--regsmart")
+
+    assert any("Using --diff-level=function" in x for x in out.outlines)
 
 
 def test_selection_with_rank_levels(selection_project):

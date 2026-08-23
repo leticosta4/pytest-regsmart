@@ -38,6 +38,6 @@ class DIFF_LEVEL(str, Enum):
     def __str__(self) -> str:
         return self.value
 
-DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FILE #for now... i'll change it later
+DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FUNCTION
 
 DIFF_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")

@@ -92,7 +92,7 @@ def parse_diff_output(raw_diff: str) -> dict[str, list[tuple[int, int]]]:
     return changed_line_ranges
 
 
-def get_git_diff(repo_path: str = ".", graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> DiffResult:
+def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> DiffResult:
     repo = resolve_repo(repo_path=repo_path)
     untracked_diff = repo.untracked_files
 
@@ -108,7 +108,7 @@ def get_git_diff(repo_path: str = ".", graph_level: DIFF_LEVEL = DEFAULT_DIFF_LE
     working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
     deleted_files = [path for path in working_dir_diff if _is_deleted(repo, merge_base_commit.hexsha, path)]
 
-    if graph_level == DIFF_LEVEL.FUNCTION:
+    if diff_level == DIFF_LEVEL.FUNCTION:
         raw_diff = repo.git.diff(merge_base_commit, unified=0)
             
         return DiffResult(
