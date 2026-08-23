@@ -11,8 +11,8 @@ from pyan.node import Flavor
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
-from .git_manager import resolve_repo
 from ..utils import _find_py_files
+from .git_manager import resolve_repo
 
 #initially I'll try the simplest form using only files; functions are not needed yet
 #use the pyan3 API, not the CLI
