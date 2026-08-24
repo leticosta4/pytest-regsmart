@@ -123,7 +123,17 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> SelectionResult:
     """[wip] Orchestrates the selection..."""
 
     diff_result = get_git_diff(diff_level= level)
-    deps_graph = get_dependency_graph(graph_level= level)  # maybe parallelize this with the git diff later
+    has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
+    used_branch = diff_result.used_branch
+
+    if not has_diff:
+        return SelectionResult(
+            affected_tests=[],
+            has_diff=has_diff,
+            branch=used_branch
+        )
+    
+    deps_graph = get_dependency_graph(graph_level= level)
 
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
@@ -133,6 +143,6 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> SelectionResult:
     
     return SelectionResult(
         affected_tests=selected,
-        has_diff=bool(diff_result.modified_files or diff_result.untracked_files),
-        branch=diff_result.used_branch,
+        has_diff=has_diff,
+        branch=used_branch
     )

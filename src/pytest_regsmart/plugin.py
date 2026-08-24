@@ -44,7 +44,6 @@ def pytest_addoption(parser: Parser) -> None:
         action="store_true",
         help=PLUGIN_HELP)
 
-    #new flag to keep both file/line options
     group.addoption(
         "--diff-level",
         action="store",
@@ -142,6 +141,15 @@ class PluginRunner:
         self.branch = selection.branch
         self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
 
+        if not selection.has_diff:  #maybe i should separate return items though
+            self.warnings.append(
+                "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
+            )
+            if self.no_rank:
+                self.warnings.append(
+                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+                )
+
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
 
@@ -157,17 +165,6 @@ class PluginRunner:
                         )
                     ]
             )
-
-
-        if not selection.has_diff:  #this should be moved to the beggining though 
-            self.warnings.append(
-                "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
-            )
-            if self.no_rank:
-                self.warnings.append(
-                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
-                )
-
 
         if not self.no_rank:
             ranker.run_rtp(
