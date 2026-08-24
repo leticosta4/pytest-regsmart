@@ -9,7 +9,6 @@ from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_HUNK_HEADER, DIFF_LEVEL
 
-
 LineRange: TypeAlias = tuple[int, int]
 ChangedLineRanges: TypeAlias = dict[str, list[LineRange]]
 

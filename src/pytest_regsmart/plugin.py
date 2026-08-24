@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import time
 
 import pytest
@@ -56,8 +55,7 @@ def pytest_addoption(parser: Parser) -> None:
         "--no-rank",
         action="store_true",
         default=False,
-        help=NO_RANK_HELP,
-        dest="no_rank") #maybe unecessary
+        help=NO_RANK_HELP)
 
     group._addoption(
         "--rank-level",
@@ -125,7 +123,6 @@ class PluginRunner:
         self.hist_len = rank_args.parse_hist_len(config)
         self.seed = rank_args.parse_seed(config)
 
-
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if not self.config.getoption("--regsmart"):
@@ -151,14 +148,14 @@ class PluginRunner:
             items[:] = (
                 [item for item in items if item.nodeid.split("::")[0] in selected_nodes] if self.diff_level == DIFF_LEVEL.FILE
                 else [
-                        item
-                        for item in items
-                        if any(
-                            item.nodeid == selected_node
-                            or item.nodeid.startswith(f"{selected_node}[")
-                            for selected_node in selected_nodes
-                        )
-                    ]
+                    item
+                    for item in items
+                    if any(
+                        item.nodeid == selected_node
+                        or item.nodeid.startswith(f"{selected_node}[")
+                        for selected_node in selected_nodes
+                    )
+                ]
             )
 
         if not self.no_rank:
@@ -176,7 +173,6 @@ class PluginRunner:
 
     def pytest_report_header(self, config: Config) -> str | None:
         return reporter_mod.pytest_report_header(config)
-
 
     def pytest_sessionfinish(self, session: Session, exitstatus: int) -> None:
         start_time = time.time()
