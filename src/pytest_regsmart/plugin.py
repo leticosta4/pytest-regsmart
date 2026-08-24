@@ -130,11 +130,6 @@ class PluginRunner:
     def pytest_collection_modifyitems(self, items: list[Item]) -> None:
         if not self.config.getoption("--regsmart"):
             return
-
-        if self.replay_file and self.weights == [0, 0]:
-            raise argparse.ArgumentTypeError( #or usage error
-                "--rank-replay cannot be used together with random order."
-            )
         
         selection_start_time = time.time()
         selection = selector.run_rts(level=self.diff_level)
@@ -217,6 +212,12 @@ def pytest_configure(config: Config) -> None:
         raise pytest.UsageError(
             "--regsmart requires a git repository."
         )
+
+    if config.getoption("--rank-replay") and config.getoption("--rank-weight") == "0-0":
+        raise pytest.UsageError(
+            "--rank-replay cannot be used together with random order."
+        )
+                
 
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)
