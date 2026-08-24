@@ -36,6 +36,40 @@ from .ranking import rank_args, ranker
 from .selection import git_manager, selection_args, selector
 
 
+def _validate_options(config: Config) -> None:
+    if config.getoption("--regsmart") and config.getoption("--no-rank"):
+        for arg in config.invocation_params.args:
+            if arg.startswith("--rank-"):
+                raise pytest.UsageError(
+                    "--no-rank cannot be used together with other ranking flags. It excludes RTP."
+                )
+
+    if config.getoption("--regsmart") and not git_manager.verify_git_repo():
+        raise pytest.UsageError(
+            "--regsmart requires a git repository."
+        )
+
+    if config.getoption("--rank-replay") and config.getoption("--rank-weight") == "0-0":
+        raise pytest.UsageError(
+            "--rank-replay cannot be used together with random order."
+        )
+
+
+def _select_pytest_items_for_rtp(self, items, selected_nodes) -> None:
+    items[:] = (
+        [item for item in items if item.nodeid.split("::")[0] in selected_nodes] if self.diff_level == DIFF_LEVEL.FILE
+        else [
+            item
+            for item in items
+            if any(
+                item.nodeid == selected_node
+                or item.nodeid.startswith(f"{selected_node}[")
+                for selected_node in selected_nodes
+            )
+        ]
+    ) 
+
+
 def pytest_addoption(parser: Parser) -> None:
     group = parser.getgroup("regsmart", "pytest-regsmart")
     group._addoption(
@@ -114,7 +148,7 @@ class PluginRunner:
         self.warnings: list[str] = []
         self.monitor = Monitor()
 
-        self.branch = ""  # will be set after selection
+        self.branch = str | None
         self.diff_level = selection_args.parse_diff_level(config)
         self.no_rank = rank_args.parse_no_rank(config)
         self.weights = rank_args.parse_rtp_weights(config)
@@ -145,18 +179,7 @@ class PluginRunner:
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
 
-            items[:] = (
-                [item for item in items if item.nodeid.split("::")[0] in selected_nodes] if self.diff_level == DIFF_LEVEL.FILE
-                else [
-                    item
-                    for item in items
-                    if any(
-                        item.nodeid == selected_node
-                        or item.nodeid.startswith(f"{selected_node}[")
-                        for selected_node in selected_nodes
-                    )
-                ]
-            )
+            _select_pytest_items_for_rtp(self, items, selected_nodes)
 
         if not self.no_rank:
             ranker.run_rtp(
@@ -197,23 +220,7 @@ class PluginRunner:
 
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config: Config) -> None:
-    if config.getoption("--regsmart") and config.getoption("--no-rank"):
-        for arg in config.invocation_params.args:
-            if arg.startswith("--rank-"):
-                raise pytest.UsageError(
-                    "--no-rank cannot be used together with other ranking flags. It excludes RTP."
-                )
-
-    if config.getoption("--regsmart") and not git_manager.verify_git_repo():
-        raise pytest.UsageError(
-            "--regsmart requires a git repository."
-        )
-
-    if config.getoption("--rank-replay") and config.getoption("--rank-weight") == "0-0":
-        raise pytest.UsageError(
-            "--rank-replay cannot be used together with random order."
-        )
-                
+    _validate_options(config)
 
     runner = PluginRunner(config)
     config.pluginmanager.register(runner)
