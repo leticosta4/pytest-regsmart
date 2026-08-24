@@ -55,11 +55,11 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
 1. **Compute the changed files.** It uses git to inspect the working tree against the default branch:
    - the default branch is resolved from `refs/remotes/origin/HEAD`, falling back to `main`/`master`, and finally to the currently active branch;
    - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
-2. **Build a dependency graph.** Using [`pyan3`](https://pypi.org/project/pyan3/), it parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`) and builds a module-level import graph. This graph is then inverted so that, for each module, it knows *which* other modules depend on it.
+2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`) and builds a module-level import graph. This graph is then inverted so that, for each module, it knows *which* other modules depend on it.
 3. **Propagate changes transitively.** A BFS traversal starts from the changed and untracked files and walks through their dependents, collecting any test file (files named `test_*.py` or `*_test.py`) that is affected directly or indirectly.
 4. **Filter the test suite.** Test items whose file is not in the selected set are removed from the run; only affected tests are actually executed.
 
-If there is no diff since the baseline, the selection is skipped (a warning is reported) and the full test suite runs.
+If there is no diff since the baseline, `pytest-regsmart` skips both dependency-graph generation and test selection, reports a warning, and runs the full test suite. RTP still runs unless `--no-rank` is set; with both no diff and `--no-rank`, the plugin reports that it has no work to do.
 
 Because selection works at the **module/file level**, it is intentionally conservative: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary. Finer (e.g. function-level) granularity is planned as future work.
 
