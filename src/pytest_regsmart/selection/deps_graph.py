@@ -4,6 +4,7 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from pyan.analyzer import CallGraphVisitor
 from pyan.modvis import ImportVisitor
@@ -33,21 +34,29 @@ class FunctionMetadata:
     end_line: int
 
 
+NodeId: TypeAlias = str #file or function level according to diff-level
+DependenciesMap: TypeAlias = dict[NodeId, set[NodeId]]  # node -> who it depends on
+DependentsMap: TypeAlias = dict[NodeId, set[NodeId]]    # node -> who depends on it
+FunctionNodes: TypeAlias = dict[str, FunctionMetadata]
+FunctionsByFile: TypeAlias = dict[str, set[str]]
+ModuleToPath: TypeAlias = dict[str, str]
+
+
 @dataclass
 class DependencyGraph:
-    dependents: dict[str, set[str]]  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
-    function_nodes: dict[str, FunctionMetadata] = field(default_factory=dict)  #the key represents the funcion name/node name
-    functions_by_file: dict[str, set[str]] = field(default_factory=dict)
+    dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
+    function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
+    functions_by_file: FunctionsByFile = field(default_factory=dict)
 
     
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
-) -> tuple[dict[str, FunctionMetadata], dict[str, set[str]]]:
+) -> tuple[FunctionNodes, FunctionsByFile]:
     """Filters and converts pyan3 nodes into simpler function nodes indexed by name"""
 
-    function_nodes: dict[str, FunctionMetadata] = {}
-    functions_by_file: dict[str, set[str]] = defaultdict(set)
+    function_nodes: FunctionNodes = {}
+    functions_by_file: FunctionsByFile = defaultdict(set)
 
     for node_group in graph.nodes.values():
         for node in node_group:
@@ -69,7 +78,7 @@ def _extract_function_nodes(
     return function_nodes, dict(functions_by_file)
 
 
-def _convert_module_to_relative_path(fullpaths, working_dir: str) -> dict[str, str]:
+def _convert_module_to_relative_path(fullpaths: ModuleToPath, working_dir: str) -> ModuleToPath:
     """Convert pyan3 module names to paths relative to the repo (to match the diff).
 
     E.g.: "pytest_regsmart.selector" -> "pytest_regsmart/selector.py"
@@ -81,9 +90,9 @@ def _convert_module_to_relative_path(fullpaths, working_dir: str) -> dict[str, s
 
 
 def _invert_dependency_map(
-        connections: dict[str, set[str]],
-        module_to_path: dict[str, str] | None = None # only necessary for file-level graphs
-    ) -> dict[str, set[str]]:
+        connections: DependenciesMap,
+        module_to_path: ModuleToPath | None = None # only necessary for file-level graphs
+    ) -> DependentsMap:
     """Invert 'Y imports X' into 'X is used by Y'.
 
     E.g.: if plugin.py imports selector.py, the result contains
