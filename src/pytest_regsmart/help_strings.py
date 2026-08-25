@@ -5,7 +5,6 @@ Run regression test prioritization for pytest test suite.
 It re-orders execution of tests to expose test failure sooner.
 """)
 
-
 WEIGHT_HELP = textwrap.dedent("""\
 Set weights on different prioritization heuristics,
 separated by hyphens `-`.
@@ -45,7 +44,6 @@ When selected, tests will run in pytest default order.
 """) #need to adapt this ending to use the RTS later
 
 DIFF_LEVEL_HELP = textwrap.dedent("""
-The levels at which the diff will be identified using Git.
-Default value is file, which means that the diff will be identified at the file level.
-If you want to identify the diff at the function level, you can set this option to function.
-""") #make this better asap
+The levels at which the diff will be identified using Git and the level for the dependency graph.
+Possible values are: file and function (default).
+""")
