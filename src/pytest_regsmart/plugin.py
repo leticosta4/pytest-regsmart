@@ -130,7 +130,7 @@ def pytest_addoption(parser: Parser) -> None:
         help=SEED_HELP)
 
     parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL)
-    parser.addini("no_rank", NO_RANK_HELP, default=False)
+    parser.addini("no_rank", NO_RANK_HELP, type="bool")
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
     parser.addini("rank_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL)

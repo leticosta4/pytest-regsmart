@@ -122,6 +122,5 @@ def parse_no_rank(config) -> bool:
     """Get no-rank option, non-default CLI overrides ini file input."""
     no_rtp = config.getoption("--no-rank")
     if not no_rtp:
-        ini_val = config.getini("no_rank")
-        no_rtp = ini_val if ini_val else no_rtp
-    return bool(no_rtp)
+        return config.getini("no_rank")
+    return True
