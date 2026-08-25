@@ -23,7 +23,7 @@ def test_logging(mytester):
         "Using --rank-level",
         "Using --rank-hist-len",
         "Using --rank-seed",
-        "Time to reorder tests (s)",
+        "Time to run the regression test prioritization (s)",
         "Time to collect test features (s)",
     )
 

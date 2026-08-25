@@ -44,7 +44,7 @@ After the test run finishes, the terminal summary will show the overhead of `pyt
 ```
 =================================== pytest-regsmart summary info ====================================
 Time to run the regression test selection (s): 0.0003604120544433594
-Time to reorder tests (s): 0.0004608631134033203
+Time to run the regression test prioritization (s): 0.0004608631134033203
 Time to collect test features (s): 0.0004608631134033203
 ```
 
