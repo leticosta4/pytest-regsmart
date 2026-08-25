@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
@@ -119,14 +120,17 @@ def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
     return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
-def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> SelectionResult:
+def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None) -> SelectionResult:
     """[wip] Orchestrates the selection..."""
+    start_time = time.time()
 
     diff_result = get_git_diff(diff_level= level)
     has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
     used_branch = diff_result.used_branch
 
     if not has_diff:
+        if log_dict is not None:
+            log_dict["Time to run the regression test selection (s)"] = time.time() - start_time
         return SelectionResult(
             affected_tests=[],
             has_diff=has_diff,
@@ -140,7 +144,10 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> SelectionResult:
         if level == DIFF_LEVEL.FUNCTION
         else _get_affected_tests_at_file_level(diff_result, deps_graph)
     )
-    
+
+    if log_dict is not None:
+        log_dict["Time to run the regression test selection (s)"] = time.time() - start_time
+
     return SelectionResult(
         affected_tests=selected,
         has_diff=has_diff,

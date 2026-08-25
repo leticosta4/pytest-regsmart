@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from _pytest.config import Config
 from _pytest.reports import TestReport
@@ -29,8 +30,10 @@ def compute_test_features(
     config: Config,
     test_reports: list[TestReport],
     hist_len: int,
+    log_dict: dict | None = None,
 ) -> None:
     """Persist last_durations and num_runs_since_fail to cache."""
+    start_time = time.time()
     key = os.path.join(DATA_DIR, "last_durations")
     last_durations = config.cache.get(key, {})
     for report in test_reports:
@@ -48,3 +51,6 @@ def compute_test_features(
                 num_runs_since_fail.get(report.nodeid, 0) + 1,
             )
     config.cache.set(key, num_runs_since_fail)
+
+    if log_dict is not None:
+        log_dict["Time to collect test features (s)"] = time.time() - start_time

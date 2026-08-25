@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
@@ -162,10 +160,8 @@ class PluginRunner:
         if not self.config.getoption("--regsmart"):
             return
         
-        selection_start_time = time.time()
-        selection = selector.run_rts(level=self.diff_level)
+        selection = selector.run_rts(level=self.diff_level, log_dict=self.log)
         self.branch = selection.branch
-        self.log["Time to run the regression test selection (s)"] = time.time() - selection_start_time
 
         if not selection.has_diff:  #maybe i should separate return items though
             self.warnings.append(
@@ -198,12 +194,8 @@ class PluginRunner:
         return reporter_mod.pytest_report_header(config)
 
     def pytest_sessionfinish(self, session: Session, exitstatus: int) -> None:
-        start_time = time.time()
         extractor.compute_test_features(
-            self.config, self.monitor.test_reports, self.hist_len,
-        )
-        self.log["Time to collect test features (s)"] = (
-            time.time() - start_time
+            self.config, self.monitor.test_reports, self.hist_len, self.log,
         )
 
 
