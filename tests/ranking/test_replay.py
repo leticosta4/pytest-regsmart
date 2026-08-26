@@ -57,7 +57,7 @@ def test_replay_with_random(mytester):
     ]
     out = mytester.runpytest(*args)
     error_msg = "--rank-replay cannot be used together with random order."
-    assert len([x for x in out.outlines if error_msg in x]) == 1
+    assert len([x for x in out.errlines if error_msg in x]) == 1
 
 
 def test_invalid_replay(mytester):

@@ -105,4 +105,4 @@ def run_rtp(
     )
     items[:] = od_items + nod_items
 
-    log_dict["Time to reorder tests (s)"] = time.time() - start_time
+    log_dict["Time to run the regression test prioritization (s)"] = time.time() - start_time

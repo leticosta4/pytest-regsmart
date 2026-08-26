@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tests.fake_test_data import test_method_one
@@ -38,6 +40,20 @@ def test_no_rank_with_ranking_flag_error(mytester, ranking_flag):
     args = ["-v", "--regsmart", "--no-rank", ranking_flag]
     out = mytester.runpytest(*args)
     assert "--no-rank cannot be used together" in str(out.errlines + out.outlines)
+
+
+@pytest.mark.parametrize("ini_value, expect_no_rank_header", [
+    ("false", False),
+    ("true", True),
+])
+def test_no_rank_ini_value(mytester, ini_value, expect_no_rank_header):
+    mytester.makepyfile(test_method_one=test_method_one)
+    (Path(mytester.path) / "pytest.ini").write_text(
+        f"[pytest]\nconsole_output_style = classic\nno_rank = {ini_value}\n"
+    )
+    out = mytester.runpytest("-v", "--regsmart")
+    has_header = any("Using --no-rank (RTP disabled)." in x for x in out.outlines)
+    assert has_header is expect_no_rank_header
 
 
 def test_no_rank_header_and_summary(mytester):

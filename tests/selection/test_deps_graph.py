@@ -230,7 +230,7 @@ def test_get_dependency_graph_end_to_end(git_repo):
 def test_get_dependency_graph_drops_stdlib_and_non_repo_files(git_repo):
     _build_sample_project(git_repo)
 
-    graph = get_dependency_graph(git_repo.working_tree_dir)
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
 
     for filepath in graph.dependents:
         assert filepath.endswith(".py")
@@ -244,7 +244,7 @@ def test_get_dependency_graph_drops_stdlib_and_non_repo_files(git_repo):
 def test_get_dependency_graph_leaf_module_has_no_entry(git_repo):
     _build_sample_project(git_repo)
 
-    graph = get_dependency_graph(git_repo.working_tree_dir)
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
 
     assert "mypkg/main.py" not in graph.dependents
     assert "tests/test_app.py" not in graph.dependents

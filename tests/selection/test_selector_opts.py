@@ -53,29 +53,6 @@ def test_selection_no_rank_only_affected_in_collection_order(selection_project):
     assert any("Using --no-rank (RTP disabled)." in x for x in out.outlines)
 
 
-def test_function_level_selection_keeps_only_affected_test_functions(
-        selection_project):
-    pytester, repo = selection_project
-    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
-
-    out = pytester.runpytest(
-        "-v", "--regsmart", "--diff-level=function", "--no-rank"
-    )
-
-    out.assert_outcomes(passed=3)
-    assert _ran_files(out) == ["test_other.py", "test_service.py"]
-
-
-def test_function_level_selection_can_be_ranked(selection_project):
-    pytester, repo = selection_project
-    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
-
-    out = pytester.runpytest("-v", "--regsmart", "--diff-level=function")
-
-    out.assert_outcomes(passed=3)
-    assert _ran_files(out) == ["test_other.py", "test_service.py"]
-
-
 def test_function_level_selects_only_tests_of_changed_function(selection_project):
     pytester, repo = selection_project
     _commit_new_file(

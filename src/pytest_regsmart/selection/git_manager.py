@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_HUNK_HEADER, DIFF_LEVEL
+
+LineRange: TypeAlias = tuple[int, int]
+ChangedLineRanges: TypeAlias = dict[str, list[LineRange]]
 
 
 @dataclass
@@ -15,7 +19,7 @@ class DiffResult:
     modified_files: list[str] = field(default_factory=list) #staged+unstaged
     untracked_files: list[str] = field(default_factory=list) #brand new files - maybe add a future flag to look only at unstaged+untracked tests
     deleted_files: list[str] = field(default_factory=list)
-    changed_line_ranges: dict[str, list[tuple[int, int]]] = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
+    changed_line_ranges: ChangedLineRanges = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
 
 
 def resolve_repo(repo_path: str = ".") -> Repo:
@@ -62,9 +66,9 @@ def _is_deleted(repo: Repo, merge_base_hash: str, path: str) -> bool:
         return False
 
 
-def parse_diff_output(raw_diff: str) -> dict[str, list[tuple[int, int]]]:
+def parse_diff_output(raw_diff: str) -> ChangedLineRanges:
     """Parses `git diff -U0` and returns the changed line ranges for each file from the entire repo"""
-    changed_line_ranges: dict[str, list[tuple[int, int]]] = {}
+    changed_line_ranges: ChangedLineRanges = {}
     current_file: str | None = None
 
     for line in raw_diff.splitlines():

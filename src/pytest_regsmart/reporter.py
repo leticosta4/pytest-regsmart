@@ -3,6 +3,8 @@ from __future__ import annotations
 from _pytest.config import Config
 from _pytest.terminal import TerminalReporter
 
+from .ranking.rank_args import parse_no_rank
+
 
 def pytest_report_header(config: Config) -> str | None:
     """Report plugin configurations before test session starts."""
@@ -10,7 +12,7 @@ def pytest_report_header(config: Config) -> str | None:
     if not config.getoption("--regsmart"):
         return None
 
-    if config.getoption("--no-rank"):
+    if parse_no_rank(config):
         return [
             "\nStarting RTS (Regression Test Selection)",
             "Using --no-rank (RTP disabled).",
