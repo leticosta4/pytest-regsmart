@@ -89,15 +89,63 @@ def _convert_module_to_relative_path(fullpaths: ModuleToPath, working_dir: str) 
     }
 
 
+def _build_import_name_to_path(fullpaths: ModuleToPath, working_dir: str) -> dict[str, str]:
+    """Map every possible import-style suffix of a module's dotted name to its file path.
+
+    E.g. for module "src.text_toolkit.text_stats":
+      "text_stats" -> path
+      "text_toolkit.text_stats" -> path
+      "src.text_toolkit.text_stats" -> path (redundant with module_to_path, harmless)
+
+    For __init__ modules, the __init__ segment is dropped so that the package
+    name itself maps to the __init__.py file:
+      "src.text_toolkit.__init__" -> segments become ["src", "text_toolkit"]
+      "text_toolkit" -> path
+      "src.text_toolkit" -> path
+
+    __init__ modules take priority over regular modules for the same import name,
+    matching Python's import resolution semantics (from pkg import X resolves to
+    pkg/__init__.py, not pkg/X.py).
+
+    Ambiguous suffixes (same suffix pointing to different non-init files) are
+    dropped entirely.
+    """
+    import_to_path: dict[str, str] = {}
+    ambiguous: set[str] = set()
+
+    for module, fullpath in fullpaths.items():
+        rel_path = os.path.relpath(fullpath, working_dir)
+        segments = module.split(".")
+        is_init = segments[-1] == "__init__"
+        if is_init:
+            segments = segments[:-1]
+
+        for i in range(len(segments)):
+            candidate = ".".join(segments[i:])
+            existing = import_to_path.get(candidate)
+            if existing is None:
+                import_to_path[candidate] = rel_path
+            elif is_init:
+                import_to_path[candidate] = rel_path
+            elif existing != rel_path:
+                ambiguous.add(candidate)
+
+    for name in ambiguous:
+        import_to_path.pop(name, None)
+
+    return import_to_path
+
+
 def _invert_dependency_map(
         connections: DependenciesMap,
-        module_to_path: ModuleToPath | None = None # only necessary for file-level graphs
+        module_to_path: ModuleToPath | None = None, # only necessary for file-level graphs
+        import_name_to_path: dict[str, str] | None = None, # fallback for import-style names that don't match path-derived module names (ImportVisitor problem)
     ) -> DependentsMap:
     """Invert 'Y imports X' into 'X is used by Y'.
 
     E.g.: if plugin.py imports selector.py, the result contains
     selector.py -> {plugin.py} (changing selector.py affects plugin.py); OR changing run affects test_run()
-    
+
     With module_to_path: translates module names to relative paths (file-level graph)
         e.g.: "pytest_regsmart.selector" -> "pytest_regsmart/selector.py"
     Without module_to_path: keeps ids (functions references) as-is (function-level graph)
@@ -113,6 +161,8 @@ def _invert_dependency_map(
 
         for imported in dependencies:
             imported_path = imported if module_to_path is None else module_to_path.get(imported)
+            if imported_path is None and import_name_to_path is not None:
+                imported_path = import_name_to_path.get(imported)
             if imported_path is None:
                 continue  #doesnt import a file in the repo
             dependents[imported_path].add(importer_path)
@@ -129,7 +179,8 @@ def _build_file_dependency_graph(
     #graph.fullpaths: module -> absolute file path
 
     module_to_path = _convert_module_to_relative_path(graph.fullpaths, working_dir)
-    dependents = _invert_dependency_map(graph.modules, module_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
+    import_name_to_path = _build_import_name_to_path(graph.fullpaths, working_dir)
+    dependents = _invert_dependency_map(graph.modules, module_to_path, import_name_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
 
     return DependencyGraph(dependents=dependents)
 
