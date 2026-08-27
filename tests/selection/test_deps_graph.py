@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 
 from pyan.analyzer import CallGraphVisitor
-from pytest import mark
+from pytest import mark, param
 
 from pytest_regsmart.const import DIFF_LEVEL
 from src.pytest_regsmart.selection.deps_graph import (
     FunctionMetadata,
+    _build_import_name_to_path,
     _convert_module_to_relative_path,
     _extract_function_nodes,
     _find_py_files,
@@ -79,6 +80,84 @@ def test_convert_module_to_relative_path(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# _build_import_name_to_path
+# ---------------------------------------------------------------------------
+
+
+@mark.parametrize(
+    "fullpaths,expected",
+    [
+        param(
+            {
+                "pkg.__init__": "pkg/__init__.py",
+                "pkg.service": "pkg/service.py",
+                "tests.test_app": "tests/test_app.py",
+            },
+            {
+                "pkg": os.path.join("pkg", "__init__.py"),
+                "service": os.path.join("pkg", "service.py"),
+                "test_app": os.path.join("tests", "test_app.py"),
+                "pkg.service": os.path.join("pkg", "service.py"),
+                "tests.test_app": os.path.join("tests", "test_app.py"),
+            },
+            id="flat-layout",
+        ),
+        param(
+            {
+                "src.hi": "src/hi.py",
+                "src.text_toolkit.__init__": "src/text_toolkit/__init__.py",
+                "src.text_toolkit.text_stats": "src/text_toolkit/text_stats.py",
+                "tests.test_hi": "tests/test_hi.py",
+                "tests.test_text_stats": "tests/test_text_stats.py",
+            },
+            {
+                "hi": os.path.join("src", "hi.py"),
+                "text_toolkit": os.path.join("src", "text_toolkit", "__init__.py"),
+                "text_stats": os.path.join("src", "text_toolkit", "text_stats.py"),
+                "test_hi": os.path.join("tests", "test_hi.py"),
+                "test_text_stats": os.path.join("tests", "test_text_stats.py"),
+                "src.hi": os.path.join("src", "hi.py"),
+                "src.text_toolkit": os.path.join("src", "text_toolkit", "__init__.py"),
+                "src.text_toolkit.text_stats": os.path.join("src", "text_toolkit", "text_stats.py"),
+                "tests.test_hi": os.path.join("tests", "test_hi.py"),
+                "tests.test_text_stats": os.path.join("tests", "test_text_stats.py"),
+                "text_toolkit.text_stats": os.path.join("src", "text_toolkit", "text_stats.py"),
+            },
+            id="src-layout",
+        ),
+    ],
+)
+def test_build_import_name_to_path(tmp_path, fullpaths, expected):
+    abs_fullpaths = {k: str(tmp_path / v) for k, v in fullpaths.items()}
+
+    result = _build_import_name_to_path(abs_fullpaths, str(tmp_path))
+
+    assert result == expected
+
+
+def test_build_import_name_to_path_drops_ambiguous(tmp_path):
+    fullpaths = {
+        "a.foo": str(tmp_path / "a" / "foo.py"),
+        "b.foo": str(tmp_path / "b" / "foo.py"),
+    }
+
+    result = _build_import_name_to_path(fullpaths, str(tmp_path))
+
+    assert "foo" not in result
+
+
+def test_build_import_name_to_path_init_package_name(tmp_path):
+    fullpaths = {
+        "mypkg.__init__": str(tmp_path / "mypkg" / "__init__.py"),
+    }
+
+    result = _build_import_name_to_path(fullpaths, str(tmp_path))
+
+    assert result["mypkg"] == os.path.join("mypkg", "__init__.py")
+    assert "__init__" not in result
+
+
+# ---------------------------------------------------------------------------
 # _invert_dependency_map
 # ---------------------------------------------------------------------------
 
@@ -142,6 +221,43 @@ def test_invert_dependency_map_cases(module_imports,module_to_path,expected_depe
     graph = _invert_dependency_map(module_imports, module_to_path)
     
     assert graph == expected_dependents
+
+
+@mark.parametrize(
+    "connections,module_to_path,import_name_to_path,expected",
+    [
+        param(
+            {"tests.test_app": {"text_toolkit"}},
+            {
+                "tests.test_app": "tests/test_app.py",
+                "src.text_toolkit.__init__": "src/text_toolkit/__init__.py",
+            },
+            {"text_toolkit": "src/text_toolkit/__init__.py"},
+            {"src/text_toolkit/__init__.py": {"tests/test_app.py"}},
+            id="fallback-resolves",
+        ),
+        param(
+            {"tests.test_app": {"mypkg.service"}},
+            {
+                "tests.test_app": "tests/test_app.py",
+                "mypkg.service": "mypkg/service.py",
+            },
+            {"service": "mypkg/service.py"},
+            {"mypkg/service.py": {"tests/test_app.py"}},
+            id="exact-match-wins",
+        ),
+        param(
+            {"tests.test_app": {"stdlib_module"}},
+            {"tests.test_app": "tests/test_app.py"},
+            {},
+            {},
+            id="fallback-also-fails",
+        ),
+    ],
+)
+def test_invert_dependency_map_fallback(connections, module_to_path, import_name_to_path, expected):
+    result = _invert_dependency_map(connections, module_to_path, import_name_to_path)
+    assert result == expected
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +378,43 @@ def test_get_dependency_graph_defaults_to_dot_repo(monkeypatch, git_repo):
         "mypkg/main.py",
         "tests/test_app.py",
     }
+
+
+# ---------------------------------------------------------------------------
+# get_dependency_graph (src-layout end-to-end)
+# ---------------------------------------------------------------------------
+
+
+def _build_src_layout_project(repo):
+    root = Path(repo.working_tree_dir)
+    _write(root, "src/mypkg/__init__.py", "from mypkg.service import run\n")
+    _write(
+        root,
+        "src/mypkg/service.py",
+        "def run():\n    return 42\n",
+    )
+    _write(root, "tests/test_app.py", "from mypkg.service import run\n")
+    _write(root, "tests/test_other.py", "from mypkg import service\n")
+
+
+def test_get_dependency_graph_src_layout(git_repo):
+    _build_src_layout_project(git_repo)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert "tests/test_app.py" in graph.dependents["src/mypkg/service.py"]
+    assert "tests/test_other.py" in graph.dependents["src/mypkg/__init__.py"]
+
+
+def test_get_dependency_graph_src_layout_import_submodule(git_repo):
+    root = Path(git_repo.working_tree_dir)
+    _write(root, "src/pkg/__init__.py")
+    _write(root, "src/pkg/core.py", "def compute():\n    return 1\n")
+    _write(root, "tests/test_core.py", "from pkg.core import compute\n")
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert "tests/test_core.py" in graph.dependents["src/pkg/core.py"]
 
 
 # ---------------------------------------------------------------------------
