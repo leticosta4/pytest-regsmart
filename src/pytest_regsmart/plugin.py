@@ -172,6 +172,15 @@ class PluginRunner:
                     "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
                 )
 
+        if selection.full_run:
+            self.warnings.append(
+                "conftest.py was modified: regression test selection was skipped. The value set for '--diff-level' will be ignored."
+            )
+            if self.no_rank:
+                self.warnings.append(
+                    "conftest diff and --no-rank enabled: pytest-regsmart is not doing anything."
+                )
+
         if selection.affected_tests:
             selected_nodes = set(selection.affected_tests)
 

@@ -16,3 +16,7 @@ def _find_py_files(working_dir: str) -> list[str]:
 def _is_test_file(filepath: str) -> bool:
     filename = os.path.basename(filepath)
     return filename.startswith("test_") or filename.endswith("_test.py")
+
+
+def _is_conftest(filepath: str) -> bool:
+    return os.path.basename(filepath) == "conftest.py"
