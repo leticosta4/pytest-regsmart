@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
-from ..utils import _is_test_file, _is_conftest
+from ..utils import _is_conftest, _is_test_file
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
 
@@ -130,20 +130,14 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
     used_branch = diff_result.used_branch
 
     if not has_diff:
-        if log_dict is not None:
-            log_dict["Time to run the regression test selection (s)"] = time.time() - start_time
         return SelectionResult(
             affected_tests=[],
             has_diff=has_diff,
-            branch=used_branch,
-            full_run=True
+            branch=used_branch
         )
 
     changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
     if any(_is_conftest(f) for f in changed_files):
-        if log_dict is not None:
-            log_dict["Time to run the regression test selection (s)"] = time.time() - start_time
-
         return SelectionResult(
             affected_tests=[],
             has_diff=has_diff,

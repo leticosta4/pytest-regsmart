@@ -165,20 +165,19 @@ class PluginRunner:
 
         if not selection.has_diff:  #maybe i should separate return items though
             self.warnings.append(
-                "No diff detected: regression test selection was skipped. The value set for '--diff-level' will be ignored."
+                "No diff detected: regression test selection was skipped. The value set for '--diff-level' was ignored."
             )
             if self.no_rank:
-                self.warnings.append(
+                self.warnings.append( #maybe should raise an usageError
                     "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
                 )
-
-        if selection.full_run:
+        elif selection.full_run:
             self.warnings.append(
-                "conftest.py was modified: regression test selection was skipped. The value set for '--diff-level' will be ignored."
+                "conftest.py changed: regression test selection was skipped. The full suite will run. The value set for '--diff-level' was ignored."
             )
             if self.no_rank:
                 self.warnings.append(
-                    "conftest diff and --no-rank enabled: pytest-regsmart is not doing anything."
+                    "conftest.py changed and --no-rank enabled: pytest-regsmart is not doing anything."
                 )
 
         if selection.affected_tests:

@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+
+import pytest
 
 from src.pytest_regsmart.const import DIFF_LEVEL
 from src.pytest_regsmart.selection.deps_graph import (
@@ -223,3 +226,150 @@ def test_run_rts_without_diff_selects_nothing(git_repo, commit_file, monkeypatch
     assert result.affected_tests == []
     assert result.has_diff is False
     assert result.branch == "main"
+    assert result.full_run is False
+
+
+# ---------------------------------------------------------------------------
+# run_rts (conftest -> full suite)
+# ---------------------------------------------------------------------------
+
+
+def _write_untracked(repo, relpath: str, content: str = "") -> Path:
+    filepath = Path(repo.working_tree_dir) / relpath
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_text(content)
+    return filepath
+
+
+def _commit_sample_project_with_conftest(git_repo, commit_file):
+    _commit_sample_project(git_repo, commit_file)
+    commit_file("conftest.py", "# shared fixtures\n")
+
+
+@pytest.mark.parametrize("level", [DIFF_LEVEL.FILE, DIFF_LEVEL.FUNCTION])
+def test_run_rts_conftest_untracked_triggers_full_run(git_repo, commit_file, monkeypatch, level):
+    _commit_sample_project(git_repo, commit_file)
+    _write_untracked(git_repo, "conftest.py", "# shared fixtures\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is True
+    assert result.affected_tests == []
+    assert result.has_diff is True
+    assert result.branch == "main"
+
+
+@pytest.mark.parametrize("level", [DIFF_LEVEL.FILE, DIFF_LEVEL.FUNCTION])
+def test_run_rts_conftest_untracked_with_modified_file_triggers_full_run(
+    git_repo, commit_file, monkeypatch, level
+):
+    _commit_sample_project(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "service.py").write_text(
+        "def run():\n    return 0\n"
+    )
+    _write_untracked(git_repo, "conftest.py", "# shared fixtures\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is True
+    assert result.affected_tests == []
+
+
+@pytest.mark.parametrize("level", [DIFF_LEVEL.FILE, DIFF_LEVEL.FUNCTION])
+def test_run_rts_conftest_tracked_modified_triggers_full_run(
+    git_repo, commit_file, monkeypatch, level
+):
+    _commit_sample_project_with_conftest(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "conftest.py").write_text(
+        "# shared fixtures (edited)\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is True
+    assert result.affected_tests == []
+
+
+@pytest.mark.parametrize("level", [DIFF_LEVEL.FILE, DIFF_LEVEL.FUNCTION])
+def test_run_rts_conftest_tracked_deleted_triggers_full_run(
+    git_repo, commit_file, monkeypatch, level
+):
+    _commit_sample_project_with_conftest(git_repo, commit_file)
+    os.remove(Path(git_repo.working_tree_dir, "conftest.py"))
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is True
+    assert result.affected_tests == []
+
+
+@pytest.mark.parametrize("level", [DIFF_LEVEL.FILE, DIFF_LEVEL.FUNCTION])
+def test_run_rts_conftest_in_subdirectory_untracked_triggers_full_run(
+    git_repo, commit_file, monkeypatch, level
+):
+    _commit_sample_project(git_repo, commit_file)
+    _write_untracked(git_repo, "tests/conftest.py", "# shared fixtures\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is True
+    assert result.affected_tests == []
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [
+        (DIFF_LEVEL.FILE, ["test_app.py"]),
+        (DIFF_LEVEL.FUNCTION, ["test_app.py::test_run"]),
+    ],
+)
+def test_run_rts_without_conftest_selects_normally(git_repo, commit_file, monkeypatch, level, expected):
+    _commit_sample_project(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "service.py").write_text(
+        "def run():\n    return 0\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(level)
+
+    assert result.full_run is False
+    assert result.affected_tests == expected
+
+
+def test_run_rts_conftest_does_not_log_selection_time(git_repo, commit_file, monkeypatch):
+    _commit_sample_project(git_repo, commit_file)
+    _write_untracked(git_repo, "conftest.py", "# shared fixtures\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+    log_dict: dict = {}
+
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+
+    assert "Time to run the regression test selection (s)" not in log_dict
+
+
+def test_run_rts_without_diff_does_not_log_selection_time(git_repo, commit_file, monkeypatch):
+    _commit_sample_project(git_repo, commit_file)
+    monkeypatch.chdir(git_repo.working_tree_dir)
+    log_dict: dict = {}
+
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+
+    assert "Time to run the regression test selection (s)" not in log_dict
+
+
+def test_run_rts_logs_selection_time_when_selecting(git_repo, commit_file, monkeypatch):
+    _commit_sample_project(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "service.py").write_text(
+        "def run():\n    return 0\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+    log_dict: dict = {}
+
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+
+    assert "Time to run the regression test selection (s)" in log_dict
