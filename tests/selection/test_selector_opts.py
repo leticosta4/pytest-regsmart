@@ -206,7 +206,9 @@ def test_no_diff_with_rank_runs_everything(selection_project):
         "No diff detected: regression test selection was skipped." in x
         for x in out.outlines
     )
-    assert any("Time to run the regression test selection (s)" in x for x in out.outlines)
+    assert not any(
+        "Time to run the regression test selection (s)" in x for x in out.outlines
+    )
 
 
 def test_no_diff_with_no_rank_plugin_does_nothing(selection_project):
@@ -218,4 +220,63 @@ def test_no_diff_with_no_rank_plugin_does_nothing(selection_project):
     assert any(
         "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
         in x for x in out.outlines
+    )
+
+
+def test_conftest_untracked_runs_full_suite(selection_project):
+    pytester, repo = selection_project
+    (Path(repo.working_tree_dir) / "conftest.py").write_text(
+        "# shared fixtures\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=4)
+    assert _ran_files(out) == [
+        "test_other.py",
+        "test_service.py",
+        "test_unrelated.py",
+    ]
+    assert any(
+        "conftest.py changed: regression test selection was skipped." in x
+        for x in out.outlines
+    )
+    assert not any(
+        "Time to run the regression test selection (s)" in x for x in out.outlines
+    )
+
+
+def test_conftest_untracked_with_modified_file_runs_full_suite(selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+    (Path(repo.working_tree_dir) / "conftest.py").write_text(
+        "# shared fixtures\n"
+    )
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "--diff-level=function", "--no-rank"
+    )
+
+    out.assert_outcomes(passed=4)
+    assert len(_ran_files(out)) == 3
+    assert any(
+        "conftest.py changed: regression test selection was skipped." in x
+        for x in out.outlines
+    )
+    assert not any(
+        "Time to run the regression test selection (s)" in x for x in out.outlines
+    )
+
+
+def test_conftest_only_warning_mentions_full_suite(selection_project):
+    pytester, repo = selection_project
+    (Path(repo.working_tree_dir) / "conftest.py").write_text(
+        "# shared fixtures\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "The full suite will run." in x for x in out.outlines
     )
