@@ -129,11 +129,11 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_SEED,
         help=SEED_HELP)
 
-    parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL)
-    parser.addini("no_rank", NO_RANK_HELP, type="bool")
+    parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL.value)
+    parser.addini("no_rank", NO_RANK_HELP, type="bool", default=False)
     parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
-    parser.addini("rank_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL)
+    parser.addini("rank_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL.value)
     parser.addini("rank_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
     parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
 
