@@ -1,6 +1,7 @@
 import argparse
 
 from ..const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+from ..utils import _resolve_ini_value
 
 
 def level_type(string: str) -> DIFF_LEVEL:
@@ -15,9 +16,11 @@ def level_type(string: str) -> DIFF_LEVEL:
 
 
 def parse_diff_level(config) -> DIFF_LEVEL:
-    """Get selected level for git diff, non-default CLI overrides ini file input."""  #i need to decide if it's gonna be settable via ini/config file
-    level = config.getoption("--diff-level")
-    if level == DEFAULT_DIFF_LEVEL:
-        ini_val = config.getini("diff_level")
-        level = ini_val if ini_val else level
-    return DIFF_LEVEL(level)
+    """Get selected level for git diff, non-default CLI overrides ini file input."""
+    return _resolve_ini_value(
+        config,
+        cli_opt="--diff-level",
+        default=DEFAULT_DIFF_LEVEL,
+        ini_key="diff_level",
+        type_fn=level_type,
+    )

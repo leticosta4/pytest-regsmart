@@ -98,7 +98,7 @@ def test_invalid_level(mytester):
 
     args = ["-v", "--regsmart", "--rank-level=class"]
     out = mytester.runpytest(*args)
-    error_msg = "Invalid input for `--rank-level`."
+    error_msg = "Invalid input for `--rank-level`:"
     assert any(error_msg in x for x in out.errlines)
 
 

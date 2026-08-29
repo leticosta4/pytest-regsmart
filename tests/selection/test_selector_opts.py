@@ -134,6 +134,30 @@ def test_diff_level_ini_option_used_when_cli_absent(selection_project):
     assert _ran_files(out) == ["test_extra.py"]
 
 
+def test_invalid_rank_weight_ini_raises_usage_error(selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+    (Path(repo.working_tree_dir) / "pytest.ini").write_text(
+        "[pytest]\nconsole_output_style = classic\nrank_weight = 1-3-2\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart")
+
+    assert any("rank_weight" in x for x in out.errlines)
+    assert not any("::" in x and "PASSED" in x for x in out.outlines)
+
+
+def test_invalid_diff_level_ini_raises_usage_error(selection_project):
+    pytester, repo = selection_project
+    (Path(repo.working_tree_dir) / "pytest.ini").write_text(
+        "[pytest]\nconsole_output_style = classic\ndiff_level = class\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart")
+
+    assert any("diff_level" in x for x in out.errlines)
+
+
 def test_report_header_shows_diff_level(selection_project):
     pytester, repo = selection_project
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")

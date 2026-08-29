@@ -41,3 +41,16 @@ def test_parse_diff_level_ini_used_when_cli_has_default():
     config = _FakeConfig(option=DIFF_LEVEL.FUNCTION, ini="file")
 
     assert parse_diff_level(config) is DIFF_LEVEL.FILE
+
+
+def test_parse_diff_level_default_when_ini_unset():
+    config = _FakeConfig(option=DIFF_LEVEL.FUNCTION, ini="")
+
+    assert parse_diff_level(config) is DIFF_LEVEL.FUNCTION
+
+
+def test_parse_diff_level_invalid_ini_value_raises_usage_error():
+    config = _FakeConfig(option=DIFF_LEVEL.FUNCTION, ini="class")
+
+    with pytest.raises(pytest.UsageError, match="diff_level"):
+        parse_diff_level(config)

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.6.3] - 2026-08-29
+ 
+### Added
+- Add validation for args options in pytest.ini
+- Add default values for diff-level, rank-level and no-rank flags in pytest.ini
 ## [0.6.2] - 2026-08-22
  
 ### Added

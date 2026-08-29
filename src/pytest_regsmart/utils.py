@@ -1,4 +1,7 @@
+import argparse
 import os
+
+import pytest
 
 
 def _find_py_files(working_dir: str) -> list[str]: 
@@ -20,3 +23,14 @@ def _is_test_file(filepath: str) -> bool:
 
 def _is_conftest(filepath: str) -> bool:
     return os.path.basename(filepath) == "conftest.py"
+
+
+def _resolve_ini_value(config, cli_opt, default, ini_key, type_fn):
+    value = config.getoption(cli_opt)
+    if value == default:
+        ini_val = config.getini(ini_key)
+        value = ini_val if ini_val else value
+    try:
+        return type_fn(value)
+    except argparse.ArgumentTypeError as e:
+        raise pytest.UsageError(f"Invalid value for '{ini_key}' in pytest.ini: {e}") from None
