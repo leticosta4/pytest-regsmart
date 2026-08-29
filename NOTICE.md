@@ -1,14 +1,16 @@
 # Third-Party Notices
 
-This project, pytest-regsmart, is distributed under the GNU General Public
-License v2.0 or later (see LICENSE). It builds on and incorporates
-third-party code under different licenses, as detailed below.
+This project, pytest-regsmart, is distributed under the GNU General Public License v2.0 or later (see `LICENSE`).
+
+It builds on and incorporates third-party code under different licenses, as detailed below.
 
 ## pytest-ranking (upstream project — MIT License)
 
 pytest-regsmart is a fork of pytest-ranking
-(https://github.com/softwareTestingResearch/pytest-ranking) originally
-distributed under the MIT License:
+(https://github.com/softwareTestingResearch/pytest-ranking), originally
+distributed under the MIT License.
+
+The relevant MIT License notice from the upstream project is reproduced below:
 
 ---
 
@@ -40,7 +42,8 @@ DEALINGS IN THE SOFTWARE.
 
 pytest-regsmart imports and depends directly on pyan3
 (https://pypi.org/project/pyan3/) at runtime to build the dependency
-graph used for regression test selection. pyan3 is licensed under the
-GNU General Public License, version 2 or later. As a result, the
-combined work (pytest-regsmart) is distributed under the same terms —
-see LICENSE for the full GPL-2.0-or-later text.
+graph used for regression test selection.
+
+pyan3 is licensed under the GNU General Public License, version 2 or later.
+
+See `LICENSE` for the full GPL-2.0-or-later license text.
