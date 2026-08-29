@@ -123,9 +123,7 @@ def _build_import_name_to_path(fullpaths: ModuleToPath, working_dir: str) -> dic
         for i in range(len(segments)):
             candidate = ".".join(segments[i:])
             existing = import_to_path.get(candidate)
-            if existing is None:
-                import_to_path[candidate] = rel_path
-            elif is_init:
+            if existing is None or is_init:
                 import_to_path[candidate] = rel_path
             elif existing != rel_path:
                 ambiguous.add(candidate)
