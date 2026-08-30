@@ -8,7 +8,12 @@ import pytest
 from git import Repo
 from git.exc import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
-from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_HUNK_HEADER, DIFF_LEVEL
+from pytest_regsmart.const import (
+    DEFAULT_BRANCH_CANDIDATES,
+    DEFAULT_DIFF_LEVEL,
+    DIFF_HUNK_HEADER,
+    DIFF_LEVEL,
+)
 
 LineRange: TypeAlias = tuple[int, int]
 ChangedLineRanges: TypeAlias = dict[str, list[LineRange]]
@@ -36,14 +41,11 @@ def verify_git_repo(repo_path: str = ".") -> bool:
         return False
 
 
-_DEFAULT_BRANCH_CANDIDATES = ("main", "master")
-
-
 def resolve_base_ref(repo: Repo) -> str | None:
-    """Ref que o git consegue resolver para a branch default (main/master):
-    primeiro a branch local, depois a remote-tracking (origin/main) -- que e o
-    que sobra depois do actions/checkout com fetch-depth: 0 em qualquer evento."""
-    for branch in _DEFAULT_BRANCH_CANDIDATES:
+    """A git-resolvable ref to the default branch (main/master):
+    first the local branch, then the remote-tracking (origin/main) -- which
+    is what is left after actions/checkout with fetch-depth: 0 on any event."""
+    for branch in DEFAULT_BRANCH_CANDIDATES:
         for ref in (branch, f"origin/{branch}"):
             try:
                 repo.commit(ref)

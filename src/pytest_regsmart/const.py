@@ -41,3 +41,5 @@ class DIFF_LEVEL(str, Enum):
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FUNCTION
 
 DIFF_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+
+DEFAULT_BRANCH_CANDIDATES = ("main", "master")
