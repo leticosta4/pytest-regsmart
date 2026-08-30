@@ -243,25 +243,6 @@ Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.or
 
 `pytest-regsmart` supports Python 3.10+.
 
-## Reference
-
-#### Demo video
-A 5-minute demo video with walkthrough of `pytest-ranking`: [YouTube link](https://youtu.be/SrnkgTs3uok?feature=shared)
-(pytest-regsmart: TBA)
-
-#### Bibtex citation
-
-```
-@inproceedings{cheng2025pytest,
-  title={{pytest-ranking: A Regression Test Prioritization Tool for Python}},
-  author={Cheng, Runxiang and Ke, Kaiyao and Marinov, Darko},
-  booktitle={Companion Proceedings of the 33rd ACM International Conference on the Foundations of Software Engineering},
-  year={2025},
-}
-```
-
-(pytest-regsmart: TBA)
-
 ## Contributing
 
 Contributions are very welcome.
@@ -274,3 +255,23 @@ See [NOTICE.md](./NOTICE.md) for attribution of the incorporated third-party cod
 ## Issues
 
 If you encounter any problems, please [file an issue](https://github.com/leticosta4/pytest-regsmart/issues) or [pull request](https://github.com/leticosta4/pytest-regsmart/pulls) along with a detailed description.
+
+## Reference
+
+### From _pytest-ranking_:
+
+**Demo video**
+
+A 5-minute demo video with walkthrough of `pytest-ranking`: [YouTube link](https://youtu.be/SrnkgTs3uok?feature=shared)
+(pytest-regsmart: TBA)
+
+**Bibtex citation**
+
+```
+@inproceedings{cheng2025pytest,
+  title={{pytest-ranking: A Regression Test Prioritization Tool for Python}},
+  author={Cheng, Runxiang and Ke, Kaiyao and Marinov, Darko},
+  booktitle={Companion Proceedings of the 33rd ACM International Conference on the Foundations of Software Engineering},
+  year={2025},
+}
+```

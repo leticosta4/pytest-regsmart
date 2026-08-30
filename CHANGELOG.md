@@ -8,16 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-## [0.6.3] - 2026-08-29
- 
+## [0.6.3] - 2026-08-30
+
+### Fixed
+- Base branch is now always resolved as the default branch `main`/`master` (local first, then `origin/main`), fixing selection on GitHub Actions full checkouts (`fetch-depth: 0`, PR and push); on a shallow checkout the plugin raises a clear `UsageError` instead of silently running the full suite
+- Selecting a class at `--diff-level=function` now keeps its methods (nodeid matching also accepts a `::` prefix), so editing a class-scope line no longer drops the whole class
 ### Added
-- Hotfix: Resolve base branch to the merge destination instead of current branch
-- Add validation for args options in pytest.ini
-- Add default values for diff-level, rank-level and no-rank flags in pytest.ini
+- Validation for args options in pytest.ini
+- Default values for diff-level, rank-level and no-rank flags in pytest.ini
 ## [0.6.2] - 2026-08-22
  
 ### Added
-- New `--diff-level` flag to choose the diff granularity: `function`pr (default) or `file`
+- New `--diff-level` flag to choose the diff granularity: `function` (default) or `file`
 - Track deleted files in the diff result
 ## [0.6.1] - 2026-08-11
  
