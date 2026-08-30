@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from typing import TypeAlias
 
+import pytest
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
@@ -20,6 +21,7 @@ class DiffResult:
     untracked_files: list[str] = field(default_factory=list) #brand new files - maybe add a future flag to look only at unstaged+untracked tests
     deleted_files: list[str] = field(default_factory=list)
     changed_line_ranges: ChangedLineRanges = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
+    no_merge_base: bool = False  #base resolved, but no shared history with HEAD
 
 
 def resolve_repo(repo_path: str = ".") -> Repo:
@@ -34,25 +36,43 @@ def verify_git_repo(repo_path: str = ".") -> bool:
         return False
 
 
-def get_default_repo_branch(repo: Repo) -> str:
+def get_default_repo_branch(repo: Repo) -> str | None:
+    """Resolve the base branch to compare against the *destination* a commit
+    is headed to (never the current branch). Returns None when it cannot be determined,
+    which happens on shallow clones in CI where the destination branch isn't fetched."""
+    # 1. GitHub Actions PR: explicit destination via env var
+    if base_ref := os.environ.get("GITHUB_BASE_REF"):
+        return base_ref
+
+    # 2. Remote default (origin/HEAD)
     try: #for when the repo has a remote (origin/HEAD)
         symbolic_ref = repo.git.symbolic_ref('refs/remotes/origin/HEAD')
         return symbolic_ref.split('/')[-1] #the last part of the ref is the branch name
     except GitCommandError:
         pass
 
-    
-    branch_names = [branch.name for branch in repo.branches] #fall back to main/master if not found
+    # 3. Local main/master
+    branch_names = [branch.name for branch in repo.branches]
     for candidate in ("main", "master"):
         if candidate in branch_names:
             return candidate
 
+    # 4. Upstream tracking of the current branch (if it targets a different branch)
     try:
-        return repo.active_branch.name
-    except TypeError:  # detached head
-        raise ValueError(
-            "Unable to determine the default branch." #no origin/HEAD, no main/master, no active branch
-        ) from None
+        active = repo.active_branch
+    except TypeError:  # detached HEAD
+        active = None
+    if active is not None:
+        try:
+            upstream = active.tracking_branch()
+            if upstream is not None:
+                upstream_name = upstream.name.lstrip("./")
+                if upstream_name.split('/')[-1] != active.name:
+                    return upstream_name
+        except (AttributeError, GitCommandError):
+            pass
+
+    return None
 
 
 def _is_deleted(repo: Repo, merge_base_hash: str, path: str) -> bool:
@@ -108,7 +128,26 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
         )
 
     default_branch = get_default_repo_branch(repo) #maybe make this configurable via a flag later
-    merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
+    if default_branch is None:
+        raise pytest.UsageError(
+            "Unable to determine the base branch to compare against. "
+            "This usually happens on a shallow clone (CI often uses fetch-depth: 1), "
+            "where the destination branch (e.g. `main`) is not available locally. "
+            "Fix by using `fetch-depth: 0` in your checkout step (e.g. actions/checkout), "
+            "by fetching the base branch, or by setting the GITHUB_BASE_REF environment variable."
+        )
+
+    try:
+        merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
+    except (IndexError, GitCommandError):
+        # Base resolved but shares no history with HEAD (e.g. unrelated first commit).
+        return DiffResult(
+            modified_files=[],
+            untracked_files=untracked_diff,
+            used_branch=default_branch,
+            no_merge_base=True,
+        )
+
     working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
     deleted_files = [path for path in working_dir_diff if _is_deleted(repo, merge_base_commit.hexsha, path)]
 

@@ -304,3 +304,32 @@ def test_conftest_only_warning_mentions_full_suite(selection_project):
     assert any(
         "The full suite will run." in x for x in out.outlines
     )
+
+
+def test_no_merge_base_runs_full_suite_with_warning(selection_project):
+    pytester, repo = selection_project
+    repo.git.checkout("--orphan", "orphan-branch")
+    repo.git.rm("-r", "--cached", ".")
+    for f in ".gitignore", "pytest.ini", "service.py", "test_service.py", "test_other.py", "test_unrelated.py":
+        repo.index.add([f])
+    repo.index.commit("orphan baseline")
+
+    # orphan branch shares no history with the base -> no merge base -> full suite
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "No shared history" in x for x in out.outlines
+    )
+
+
+def test_detached_head_without_base_raises_clean_usage_error(selection_project):
+    pytester, repo = selection_project
+    repo.git.branch("-m", "dev")
+    repo.git.checkout("--detach")
+
+    # detached HEAD with no main/master, no origin/HEAD -> clean UsageError, no crash
+    out = pytester.runpytest("--regsmart")
+
+    assert any("Unable to determine the base branch" in x for x in out.errlines)
+    assert not any("::" in x and "PASSED" in x for x in out.outlines)

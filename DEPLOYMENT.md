@@ -9,6 +9,18 @@ If your CI runs different test builds in a fixed location, e.g., a project folde
 If your CI workflow always starts a new virtual machine to run a test build, you need to set up the CI to be able to pass `pytest` cache data across test builds.
 Here, we use GitHub Actions as an example.
 
+### Check out the full history
+
+`pytest-regsmart` computes the diff against the **base** (destination) branch — e.g. `main` for a PR or push. GitHub Actions' default checkout does a shallow, single-branch clone (`fetch-depth: 1`), which does not fetch that base branch, so the base cannot be resolved and `pytest-regsmart` raises a `UsageError`. Fetch the full history:
+
+```yml
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+```
+
+This only affects the clone metadata, not the working-tree files, so the added time is negligible even for large repositories.
+
 ### Add pytest-regsmart to project dependency
 
 

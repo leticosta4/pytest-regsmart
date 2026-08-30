@@ -163,7 +163,11 @@ class PluginRunner:
         selection = selector.run_rts(level=self.diff_level, log_dict=self.log)
         self.branch = selection.branch
 
-        if not selection.has_diff:  #maybe i should separate return items though
+        if selection.no_merge_base:
+            self.warnings.append(
+                f"No shared history with base branch '{selection.branch}': regression test selection was skipped. The full suite will run. The value set for '--diff-level' was ignored."
+            )
+        elif not selection.has_diff:  #maybe i should separate return items though
             self.warnings.append(
                 "No diff detected: regression test selection was skipped. The value set for '--diff-level' was ignored."
             )

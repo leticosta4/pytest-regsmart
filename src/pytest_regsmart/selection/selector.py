@@ -17,6 +17,7 @@ class SelectionResult:
     has_diff: bool
     branch: str
     full_run: bool = False
+    no_merge_base: bool = False
 
 
 def line_diff_match_function_ids(
@@ -128,6 +129,14 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
     diff_result = get_git_diff(diff_level=level)
     has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
     used_branch = diff_result.used_branch
+
+    if diff_result.no_merge_base:
+        return SelectionResult(
+            affected_tests=[],
+            has_diff=has_diff,
+            branch=used_branch,
+            no_merge_base=True,
+        )
 
     if not has_diff:
         return SelectionResult(
