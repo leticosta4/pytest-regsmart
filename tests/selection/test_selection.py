@@ -1,9 +1,11 @@
 import os
+import types
 from pathlib import Path
 
 import pytest
 
 from src.pytest_regsmart.const import DIFF_LEVEL
+from src.pytest_regsmart.plugin import _select_pytest_items_for_rtp
 from src.pytest_regsmart.selection.deps_graph import (
     DependencyGraph,
     FunctionMetadata,
@@ -168,20 +170,70 @@ def test_line_diff_file_absent_from_graph_contributes_nothing():
 # ---------------------------------------------------------------------------
 
 
-def test_nodeid_conversion_for_plain_function():
-    nodeid = _function_id_to_pytest_nodeid(
-        "tests.test_app.test_run", "tests/test_app.py"
+@pytest.mark.parametrize(
+    ("function_id", "filepath", "expected"),
+    [
+        ("tests.test_app.test_run", "tests/test_app.py", "tests/test_app.py::test_run"),
+        (
+            "tests.test_app.TestX.test_x",
+            "tests/test_app.py",
+            "tests/test_app.py::TestX::test_x",
+        ),
+        ("tests.test_app.TestX", "tests/test_app.py", "tests/test_app.py::TestX"),
+    ],
+    ids=["plain function", "class method", "class"],
+)
+def test_function_id_to_pytest_nodeid(function_id, filepath, expected):
+    assert _function_id_to_pytest_nodeid(function_id, filepath) == expected
+
+
+# ---------------------------------------------------------------------------
+# _select_pytest_items_for_rtp (filtering collected items against the selection)
+# ---------------------------------------------------------------------------
+
+
+class _FakeItem:
+    def __init__(self, nodeid: str) -> None:
+        self.nodeid = nodeid
+
+
+def _select_items(nodeids: list[str], selected_nodes: list[str], level) -> list[str]:
+    fake_self = types.SimpleNamespace(diff_level=level)
+    items = [_FakeItem(nodeid) for nodeid in nodeids]
+    _select_pytest_items_for_rtp(fake_self, items, selected_nodes)
+    return [item.nodeid for item in items]
+
+
+def test_select_items_function_level_keeps_parameterized_variants():
+    nodeids = [
+        "test_params.py::test_run_value[10]",
+        "test_params.py::test_run_value[20]",
+        "test_other.py::test_other_run",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_params.py::test_run_value"], DIFF_LEVEL.FUNCTION
     )
 
-    assert nodeid == "tests/test_app.py::test_run"
+    assert selected == [
+        "test_params.py::test_run_value[10]",
+        "test_params.py::test_run_value[20]",
+    ]
 
 
-def test_nodeid_conversion_for_class_method():
-    nodeid = _function_id_to_pytest_nodeid(
-        "pkg.mod.Calculator.add", "pkg/mod.py"
-    )
+def test_select_items_function_level_keeps_methods_of_selected_class():
+    nodeids = [
+        "test_x.py::TestX::test_a",
+        "test_x.py::TestX::test_a[1]",
+        "test_other.py::test_other_run",
+    ]
 
-    assert nodeid == "pkg/mod.py::Calculator::add"
+    selected = _select_items(nodeids, ["test_x.py::TestX"], DIFF_LEVEL.FUNCTION)
+
+    assert selected == [
+        "test_x.py::TestX::test_a",
+        "test_x.py::TestX::test_a[1]",
+    ]
 
 
 # ---------------------------------------------------------------------------

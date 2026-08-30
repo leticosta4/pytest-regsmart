@@ -62,6 +62,7 @@ def _select_pytest_items_for_rtp(self, items, selected_nodes) -> None:
             if any(
                 item.nodeid == selected_node
                 or item.nodeid.startswith(f"{selected_node}[")
+                or item.nodeid.startswith(f"{selected_node}::")
                 for selected_node in selected_nodes
             )
         ]

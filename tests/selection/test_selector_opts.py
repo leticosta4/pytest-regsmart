@@ -103,6 +103,49 @@ def test_function_level_runs_parametrized_variants_of_selected_node(selection_pr
     assert "test_params.py::test_run_value[20]" in nodeids
 
 
+def test_function_level_editing_class_attribute_runs_its_methods(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "test_classed.py",
+        "from service import run\n"
+        "\n"
+        "class TestCalc:\n"
+        '    TITLE = "calc"\n'
+        "\n"
+        "    def test_one(self):\n"
+        "        assert run() == 42\n"
+        "\n"
+        "    def test_two(self):\n"
+        "        assert run() == 42\n",
+    )
+    # change lands on a class-scope line (the attribute), outside any method
+    _change(
+        repo,
+        "test_classed.py",
+        "from service import run\n"
+        "\n"
+        "class TestCalc:\n"
+        '    TITLE = "calculator"\n'
+        "\n"
+        "    def test_one(self):\n"
+        "        assert run() == 42\n"
+        "\n"
+        "    def test_two(self):\n"
+        "        assert run() == 42\n",
+    )
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "--diff-level=function", "--no-rank"
+    )
+
+    out.assert_outcomes(passed=2)
+    assert _ran_nodeids(out) == [
+        "test_classed.py::TestCalc::test_one",
+        "test_classed.py::TestCalc::test_two",
+    ]
+
+
 def test_diff_level_ini_option_used_when_cli_absent(selection_project):
     pytester, repo = selection_project
     _commit_new_file(
