@@ -33,6 +33,8 @@ You can add `pytest-regsmart` as a dependency by adding a installation job befor
 
 Alternatively, depending on where the forked project puts its dependency, e.g., can be in `setup.py`, `pyproejct.toml`, you can also add the `pytest-regsmart` to the build/test dependency, but best not to specify version.
 
+If `pytest-regsmart` is not published on PyPI yet, install it from the repository branch: `pip install "pytest-regsmart @ git+https://github.com/leticosta4/pytest-regsmart.git@main"` (or pin it in `pyproject.toml`/`requirements.txt` the same way, so `uv sync` picks it up).
+
 
 #### If the project uses `Tox`
 
@@ -56,8 +58,10 @@ Before the job in the workflow file that runs the `pytest ...` but after the `py
       if: always()
       uses: actions/cache/restore@v4
       with:
-        path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranking_data
+        path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranked_selection_data
         key: pytest-regsmart-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}
+        restore-keys: |
+          pytest-regsmart-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}
     # --------below is the job for running pytest
     -name: pytest
         ...
@@ -74,7 +78,7 @@ And after the job that runs `pytest ...` command, add the job that caches result
       if: always()
       uses: actions/cache/save@v4
       with:
-        path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranking_data
+        path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranked_selection_data
         key: pytest-regsmart-cache-${{ github.workflow }}-${{ runner.os }}-${{ matrix.python }}-${{ github.run_id }}
 ```
 
@@ -88,7 +92,7 @@ cachedir: .tox/TOX_ENV_NAME/.pytest_cache
 ...
 ```
 
-The `cachedir` is what we are looking for. In this example, we need to replace `path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranking_data` into `path: ${{ github.workspace }}/.tox/TOX_ENV_NAME/v/pytest_ranking_data` in both the `restore` and `save` cache jobs above in the workflow file.
+The `cachedir` is what we are looking for. In this example, we need to replace `path: ${{ github.workspace }}/.pytest_cache/v/pytest_ranked_selection_data` into `path: ${{ github.workspace }}/.tox/TOX_ENV_NAME/v/pytest_ranked_selection_data` in both the `restore` and `save` cache jobs above in the workflow file.
 
 #### Alternative to `actions/cache`
 
