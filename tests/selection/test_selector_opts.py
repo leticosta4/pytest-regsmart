@@ -328,8 +328,8 @@ def test_detached_head_without_base_raises_clean_usage_error(selection_project):
     repo.git.branch("-m", "dev")
     repo.git.checkout("--detach")
 
-    # detached HEAD with no main/master, no origin/HEAD -> clean UsageError, no crash
+    # detached HEAD with no main/master, no origin/main -> clean UsageError, no crash
     out = pytester.runpytest("--regsmart")
 
-    assert any("Unable to determine the base branch" in x for x in out.errlines)
+    assert any("main/master was not found" in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)

@@ -108,10 +108,10 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
     base_ref = resolve_base_ref(repo) #maybe make this configurable via a flag later
     if base_ref is None:
         raise pytest.UsageError(
-            "main/master nao foi encontrada (nem local nem origin/main). "
-            "Em CI raso (fetch-depth: 1) a base nao e buscada; use fetch-depth: 0 no "
-            "actions/checkout, e garanta que a main tambem seja buscada "
-            "(ex: `git fetch origin main:refs/remotes/origin/main`)."
+            "main/master was not found (neither local nor origin/main). "
+            "On a shallow CI checkout (fetch-depth: 1) the base branch is not fetched; "
+            "use fetch-depth: 0 in actions/checkout and make sure main is fetched too "
+            "(e.g. `git fetch origin main:refs/remotes/origin/main`)."
         )
 
     try:

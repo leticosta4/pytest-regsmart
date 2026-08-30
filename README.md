@@ -26,9 +26,9 @@ You can run `pytest-regsmart` with its default configuration, which selects only
 pytest --regsmart
 ```
 
-Note that `--regsmart` requires the project to be a `git` repository (the regression test selection is computed from the changes since the last baseline). Running it outside a git repo raises a `UsageError`.
+Note that `--regsmart` requires the project to be a `git` repository (the regression test selection is computed from the changes since the base branch). Running it outside a git repo raises a `UsageError`.
 
-The **base branch must exist locally** for the diff to be computed. On a shallow clone (e.g. `actions/checkout` with the default `fetch-depth: 1`), the destination branch (such as `main`) is not fetched, so the base cannot be resolved — `pytest-regsmart` raises a `UsageError` telling you what to fix instead of silently running the whole suite. In CI, fetch the full history (see [Deployment](./DEPLOYMENT.md)).
+The **base branch must be resolvable in the local clone** for the diff to be computed. `pytest-regsmart` always compares the current branch against the repository's default branch — `main`, or `master` if that is its name — resolved first as a local branch and then as the `origin/main` (or `origin/master`) remote-tracking ref. On a shallow clone (e.g. `actions/checkout` with the default `fetch-depth: 1`), the base branch is not fetched, so it cannot be resolved — `pytest-regsmart` raises a `UsageError` telling you what to fix instead of silently running the whole suite. In CI, fetch the full history (see [Deployment](./DEPLOYMENT.md)).
 
 Before the test run starts, if `--regsmart` is passed, the terminal header will report `pytest-regsmart`'s configuration of this run, for example:
 
@@ -174,9 +174,9 @@ and run `pytest --regsmart` on the command line.
 
 When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection step before the tests are executed:
 
-1. **Compute the changed files.** It uses git to inspect the working tree against the **base** branch — the branch the current commit is headed to (its destination), never the currently checked-out branch:
-   - the base is resolved, in order, from the `GITHUB_BASE_REF` environment variable (set by GitHub Actions on pull requests), `refs/remotes/origin/HEAD`, a local `main`/`master`, and finally the upstream tracking branch of the current branch;
-   - the diff is `HEAD` vs the merge-base with that base, so every commit on a PR/branch is compared against its destination (e.g. `main`), not against itself;
+1. **Compute the changed files.** It uses git to inspect the working tree against the **base** branch — the repository's default branch (`main`, or `master` if that is how it is named), never the currently checked-out branch:
+   - the base is resolved first as a local `main`/`master` and then as the remote-tracking `origin/main`/`origin/master` — which is what a full checkout (`fetch-depth: 0` in `actions/checkout`) leaves available on a GitHub Actions PR or push;
+   - the diff is the working tree vs the merge-base with that base, so every commit on a PR/branch is compared against `main`/`master`, not against itself;
    - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
 
 2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
@@ -198,7 +198,7 @@ Weights are set with `--rank-weight`, normalized to sum 1 (default `1-0`, speed 
 
 See [Usage](#usage) for all available options.
 
-## Deployment (old)
+## Deployment (wip)
 
 `pytest-regsmart` is easy to deploy into CI workflow, please see [deployment](./DEPLOYMENT.md).
 
@@ -241,7 +241,7 @@ It also works with plugins for ordering tests, e.g., [pytest-order](https://pypi
 running ordered tests first in their declared order.
 Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.org/en/stable/how-to/cache.html#usage)), or plugins that randomly order tests (e.g., [pytest-randomly](https://github.com/pytest-dev/pytest-randomly), [pytest-random-order](https://github.com/pytest-dev/pytest-random-order), [pytest-reverse](https://github.com/adamchainz/pytest-reverse)), can interfere with `pytest-regsmart` as they use the same reordering hook.
 
-`pytest-regsmart` supports Python 3.8+.
+`pytest-regsmart` supports Python 3.10+.
 
 ## Reference
 

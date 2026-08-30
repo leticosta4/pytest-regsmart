@@ -9,9 +9,9 @@ from git.exc import InvalidGitRepositoryError
 
 from src.pytest_regsmart.const import DIFF_LEVEL
 from src.pytest_regsmart.selection.git_manager import (
-    get_default_repo_branch,
     get_git_diff,
     parse_diff_output,
+    resolve_base_ref,
     verify_git_repo,
 )
 
@@ -95,34 +95,34 @@ def test_not_a_repo(tmp_path):
         get_git_diff(str(tmp_path))
 
 
-def test_default_branch_is_main(git_repo, commit_file):
+def test_resolve_base_ref_uses_local_main(git_repo, commit_file):
     commit_file("file_a.py")
     git_repo.git.branch("-m", "main")
 
-    assert get_default_repo_branch(git_repo) == "main"
+    assert resolve_base_ref(git_repo) == "main"
 
 
-def test_default_branch_is_master(git_repo, commit_file):
+def test_resolve_base_ref_uses_local_master(git_repo, commit_file):
     commit_file("file_a.py")
     git_repo.git.branch("-m", "master")
 
-    assert get_default_repo_branch(git_repo) == "master"
+    assert resolve_base_ref(git_repo) == "master"
 
 
-def test_default_branch_feature_prefers_local_main(git_repo, commit_file):
+def test_resolve_base_ref_local_main_preferred_over_origin(git_repo, commit_file):
     commit_file("file_a.py")
     git_repo.git.branch("-m", "main")
-    git_repo.git.checkout("-b", "feature")
+    git_repo.git.update_ref("refs/remotes/origin/main", git_repo.head.commit)
 
-    assert get_default_repo_branch(git_repo) == "main"
+    assert resolve_base_ref(git_repo) == "main"
 
 
-def test_default_branch_detached_with_local_main(git_repo, commit_file):
+def test_resolve_base_ref_detached_with_local_main(git_repo, commit_file):
     commit_file("file_a.py")
     git_repo.git.branch("-m", "main")
     git_repo.git.checkout("--detach")
 
-    assert get_default_repo_branch(git_repo) == "main"
+    assert resolve_base_ref(git_repo) == "main"
 
 
 def test_get_git_diff_usage_error_when_no_base_destination(git_repo, commit_file):
@@ -133,75 +133,33 @@ def test_get_git_diff_usage_error_when_no_base_destination(git_repo, commit_file
         get_git_diff(str(git_repo.working_tree_dir))
 
 
-def test_default_branch_uses_upstream_tracking(git_repo, commit_file):
+def test_resolve_base_ref_uses_origin_main_when_no_local(git_repo, commit_file):
+    """Reproduces actions/checkout with fetch-depth: 0 on a PR/push:
+    origin/main exists, but there is no local main/master."""
     commit_file("file_a.py")
     git_repo.git.branch("-m", "main")
+    git_repo.git.update_ref("refs/remotes/origin/main", git_repo.head.commit)
     git_repo.git.checkout("-b", "dev")
-    git_repo.git.branch("-u", "main", "dev")
+    git_repo.delete_head("main", force=True)
 
-    assert get_default_repo_branch(git_repo) == "main"
-
-
-def test_default_branch_uses_remote_upstream_when_no_local_main(tmp_path):
-    origin = tmp_path / "origin"
-    origin.mkdir()
-    Repo.init(origin, bare=True)
-
-    local = tmp_path / "local"
-    local_repo = Repo.init(local)
-    (local / "file_a.py").write_text("base\n")
-    local_repo.index.add(["file_a.py"])
-    local_repo.index.commit("base")
-    local_repo.git.branch("-m", "main")
-    local_repo.create_remote("origin", str(origin))
-    local_repo.git.push("--set-upstream", "origin", "main")
-
-    local_repo.git.checkout("-b", "dev")
-    local_repo.git.push("--set-upstream", "origin", "dev")
-    local_repo.delete_head("main", force=True)  # only 'dev' stays local
-    local_repo.git.branch("-u", "origin/main", "dev")  # dev heads to origin/main
-
-    # no local 'main'/'master' and no origin/HEAD -> must fall back to the upstream (origin/main)
-    assert get_default_repo_branch(local_repo) == "origin/main"
+    assert resolve_base_ref(git_repo) == "origin/main"
 
 
-def test_default_branch_skips_self_mirror_upstream(tmp_path):
-    origin = tmp_path / "origin"
-    origin.mkdir()
-    Repo.init(origin, bare=True)
-
-    local = tmp_path / "local"
-    local_repo = Repo.init(local)
-    (local / "file_a.py").write_text("base\n")
-    local_repo.index.add(["file_a.py"])
-    local_repo.index.commit("base")
-    local_repo.git.branch("-m", "main")
-    local_repo.create_remote("origin", str(origin))
-    local_repo.git.push("--set-upstream", "origin", "main")
-
-    local_repo.git.checkout("-b", "feature")
-    local_repo.git.push("--set-upstream", "origin", "feature")
-    local_repo.delete_head("main", force=True)  # only 'feature' stays local
-
-    # upstream only mirrors the current branch (origin/feature) -> not a valid destination
-    assert get_default_repo_branch(local_repo) is None
-
-
-def test_default_branch_from_github_base_ref(git_repo, commit_file, monkeypatch):
+def test_resolve_base_ref_self_mirror_only_returns_none(git_repo, commit_file):
+    """Only the current branch mirrored to origin (origin/feature), no main/master."""
     commit_file("file_a.py")
-    git_repo.git.branch("-m", "main")
-    git_repo.git.checkout("-b", "feature")
-    monkeypatch.setenv("GITHUB_BASE_REF", "main")
+    git_repo.git.branch("-m", "feature")
+    git_repo.git.update_ref("refs/remotes/origin/feature", git_repo.head.commit)
 
-    assert get_default_repo_branch(git_repo) == "main"
+    assert resolve_base_ref(git_repo) is None
 
 
-def test_default_branch_detached_without_local_main_returns_none(git_repo, commit_file):
+def test_resolve_base_ref_no_main_anywhere_returns_none(git_repo, commit_file):
     commit_file("file_a.py")
     git_repo.git.branch("-m", "develop")
     git_repo.git.checkout("--detach")
 
-    assert get_default_repo_branch(git_repo) is None
+    assert resolve_base_ref(git_repo) is None
 
 
 def test_get_git_diff_no_merge_base_runs_full(git_repo, commit_file):
@@ -387,7 +345,7 @@ def test_get_git_diff_no_deleted_files(git_repo, commit_file):
 
 def test_shallow_single_branch_clone_raises_usage_error(tmp_path):
     """Reproduces GitHub Actions default checkout (fetch-depth: 1, single branch):
-    only the pushed branch exists locally, so no base destination is available."""
+    only the pushed branch exists locally, so no base branch (main/master) is available."""
     origin = tmp_path / "origin"
     origin.mkdir()
     Repo.init(origin, bare=True)
@@ -417,6 +375,6 @@ def test_shallow_single_branch_clone_raises_usage_error(tmp_path):
         branch="feature",
     )
 
-    assert get_default_repo_branch(Repo(shallow_path)) is None
+    assert resolve_base_ref(Repo(shallow_path)) is None
     with pytest.raises(pytest.UsageError):
         get_git_diff(str(shallow_path))
