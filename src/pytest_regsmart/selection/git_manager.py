@@ -6,7 +6,7 @@ from typing import TypeAlias
 
 import pytest
 from git import Repo
-from git.exc import GitCommandError, InvalidGitRepositoryError, NoSuchPathError
+from git.exc import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_HUNK_HEADER, DIFF_LEVEL
 
@@ -36,42 +36,20 @@ def verify_git_repo(repo_path: str = ".") -> bool:
         return False
 
 
-def get_default_repo_branch(repo: Repo) -> str | None:
-    """Resolve the base branch to compare against the *destination* a commit
-    is headed to (never the current branch). Returns None when it cannot be determined,
-    which happens on shallow clones in CI where the destination branch isn't fetched."""
-    # 1. GitHub Actions PR: explicit destination via env var
-    if base_ref := os.environ.get("GITHUB_BASE_REF"):
-        return base_ref
+_DEFAULT_BRANCH_CANDIDATES = ("main", "master")
 
-    # 2. Remote default (origin/HEAD)
-    try: #for when the repo has a remote (origin/HEAD)
-        symbolic_ref = repo.git.symbolic_ref('refs/remotes/origin/HEAD')
-        return symbolic_ref.split('/')[-1] #the last part of the ref is the branch name
-    except GitCommandError:
-        pass
 
-    # 3. Local main/master
-    branch_names = [branch.name for branch in repo.branches]
-    for candidate in ("main", "master"):
-        if candidate in branch_names:
-            return candidate
-
-    # 4. Upstream tracking of the current branch (if it targets a different branch)
-    try:
-        active = repo.active_branch
-    except TypeError:  # detached HEAD
-        active = None
-    if active is not None:
-        try:
-            upstream = active.tracking_branch()
-            if upstream is not None:
-                upstream_name = upstream.name.lstrip("./")
-                if upstream_name.split('/')[-1] != active.name:
-                    return upstream_name
-        except (AttributeError, GitCommandError):
-            pass
-
+def resolve_base_ref(repo: Repo) -> str | None:
+    """Ref que o git consegue resolver para a branch default (main/master):
+    primeiro a branch local, depois a remote-tracking (origin/main) -- que e o
+    que sobra depois do actions/checkout com fetch-depth: 0 em qualquer evento."""
+    for branch in _DEFAULT_BRANCH_CANDIDATES:
+        for ref in (branch, f"origin/{branch}"):
+            try:
+                repo.commit(ref)
+            except (BadName, GitCommandError):
+                continue
+            return ref  # "main" local ou "origin/main"
     return None
 
 
@@ -127,24 +105,23 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
             used_branch=""
         )
 
-    default_branch = get_default_repo_branch(repo) #maybe make this configurable via a flag later
-    if default_branch is None:
+    base_ref = resolve_base_ref(repo) #maybe make this configurable via a flag later
+    if base_ref is None:
         raise pytest.UsageError(
-            "Unable to determine the base branch to compare against. "
-            "This usually happens on a shallow clone (CI often uses fetch-depth: 1), "
-            "where the destination branch (e.g. `main`) is not available locally. "
-            "Fix by using `fetch-depth: 0` in your checkout step (e.g. actions/checkout), "
-            "by fetching the base branch, or by setting the GITHUB_BASE_REF environment variable."
+            "main/master nao foi encontrada (nem local nem origin/main). "
+            "Em CI raso (fetch-depth: 1) a base nao e buscada; use fetch-depth: 0 no "
+            "actions/checkout, e garanta que a main tambem seja buscada "
+            "(ex: `git fetch origin main:refs/remotes/origin/main`)."
         )
 
     try:
-        merge_base_commit = repo.merge_base(default_branch, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
+        merge_base_commit = repo.merge_base(base_ref, repo.head.commit)[0]  # https://git-scm.com/docs/git-merge-base#_description
     except (IndexError, GitCommandError):
         # Base resolved but shares no history with HEAD (e.g. unrelated first commit).
         return DiffResult(
             modified_files=[],
             untracked_files=untracked_diff,
-            used_branch=default_branch,
+            used_branch=base_ref,
             no_merge_base=True,
         )
 
@@ -158,7 +135,7 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
                     modified_files=working_dir_diff,
                     untracked_files=untracked_diff,
                     deleted_files=deleted_files,
-                    used_branch=default_branch,
+                    used_branch=base_ref,
                     changed_line_ranges=parse_diff_output(raw_diff)
             )
     
@@ -166,5 +143,5 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
         modified_files=working_dir_diff,
         untracked_files=untracked_diff,
         deleted_files=deleted_files,
-        used_branch=default_branch
+        used_branch=base_ref
     )
