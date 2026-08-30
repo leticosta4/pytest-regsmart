@@ -17,8 +17,6 @@ Here, we use GitHub Actions as an example.
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-
-    - run: git fetch --depth=1 origin main:refs/remotes/origin/main
 ```
 
 This only affects the clone metadata, not the working-tree files, so the added time is negligible even for large repositories.
