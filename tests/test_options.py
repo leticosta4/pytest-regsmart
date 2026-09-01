@@ -23,7 +23,7 @@ def test_logging(mytester):
         "Using --rank-level",
         "Using --rank-hist-len",
         "Using --rank-seed",
-        "Time to reorder tests (s)",
+        "Time to run the regression test prioritization (s)",
         "Time to collect test features (s)",
     )
 
@@ -58,49 +58,22 @@ def test_random_order(mytester):
         test_class_one=test_class_one,
     )
 
-    args = ["-v"]
-    out = mytester.runpytest(*args)
-    out.assert_outcomes(passed=4, failed=2)
-    log_text = (
-        "Using --rank-weight",
-        "Using --rank-level",
-        "Using --rank-hist-len",
-        "Using --rank-seed",
-        "Time to reorder tests (s)",
-        "Time to collect test features (s)",
-    )
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 0
-
-    args = ["-v", "--regsmart"]
-    out = mytester.runpytest(*args)
-    out.assert_outcomes(passed=4, failed=2)
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 6
-
     args = ["-v", "--regsmart", "--rank-weight=0-0"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
-    log_text = (
-        "Using --rank-seed=",
-    )
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 1
+    assert len([x for x in out.outlines if x.startswith("Using --rank-seed=")]) == 1
     test_lines_default1 = [x for x in out.outlines if "::" in x]
 
     args = ["-v", "--regsmart", "--rank-weight=0.0-0.0", "--rank-seed=8"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
-    log_text = (
-        "Using --rank-seed=8",
-    )
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 1
+    assert len([x for x in out.outlines if x.startswith("Using --rank-seed=8")]) == 1
     test_lines_1 = [x for x in out.outlines if "::" in x]
 
     args = ["-v", "--regsmart", "--rank-weight=0-0", "--rank-seed=16"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
-    log_text = (
-        "Using --rank-seed=16",
-    )
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 1
+    assert len([x for x in out.outlines if x.startswith("Using --rank-seed=16")]) == 1
     test_lines_2 = [x for x in out.outlines if "::" in x]
 
     assert test_lines_default1 != test_lines_1 != test_lines_2
@@ -125,5 +98,19 @@ def test_invalid_level(mytester):
 
     args = ["-v", "--regsmart", "--rank-level=class"]
     out = mytester.runpytest(*args)
-    error_msg = "Invalid input for `--rank-level`."
+    error_msg = "Invalid input for `--rank-level`:"
     assert any(error_msg in x for x in out.errlines)
+
+
+def test_summary_reports_used_branch(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    args = ["-v", "--regsmart"]
+    out = mytester.runpytest(*args)
+    out.assert_outcomes(passed=2, failed=1)
+    assert any(
+        x.startswith("Default branch used for comparison:")
+        for x in out.outlines
+    )

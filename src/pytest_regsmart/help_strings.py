@@ -5,7 +5,6 @@ Run regression test prioritization for pytest test suite.
 It re-orders execution of tests to expose test failure sooner.
 """)
 
-
 WEIGHT_HELP = textwrap.dedent("""\
 Set weights on different prioritization heuristics,
 separated by hyphens `-`.
@@ -26,7 +25,7 @@ You can run random order via setting `--rank-weight=0-0`
 Default value is 0.
 """)
 
-LEVEL_HELP = textwrap.dedent("""
+RANK_LEVEL_HELP = textwrap.dedent("""
 The test group level at which the prioritization takes place.
 Test items below the configured level follow pytest default order.
 Score of a test group is the mean score over all tests in that group.
@@ -37,9 +36,14 @@ REPLAY_HELP = textwrap.dedent("""
 Provide a text file where each line is a test ID.
 pytest-regsmart will run tests with the order defined in the file.  
 Default value is None.
-""")  ## ver ainda o que fazer sobre isso
+""")  ## gotta see what to do about this
 
 NO_RANK_HELP = textwrap.dedent("""
 Boolean flag to disable ranking option (RTP); cannot be used with other ranking flags.
 When selected, tests will run in pytest default order.
-""") #depois preciso adaptar esse final pra usar a RTS
+""") #need to adapt this ending to use the RTS later
+
+DIFF_LEVEL_HELP = textwrap.dedent("""
+The levels at which the diff will be identified using Git and the level for the dependency graph.
+Possible values are: file and function (default).
+""")

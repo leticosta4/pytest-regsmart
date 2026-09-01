@@ -52,11 +52,11 @@ def mytester(pytester):
 
 @pytest.fixture
 def selection_project(pytester):
-    """Repo git com módulo de produção + testes que o importam, tudo commitado.
+    """Git repo with production module + tests that import it, all committed.
 
-    Permite exercitar a seleção de verdade: o teste altera `service.py`
-    (produção) para gerar um diff e selecionar só os testes dependentes.
-    Retorna (Path do projeto, Repo).
+    Tests real selection: the test changes `service.py`
+    (production) to produce a diff and select only the dependent tests cases.
+    Returns (project Path, Repo).
     """
     pytester.makefile(
         ".ini",

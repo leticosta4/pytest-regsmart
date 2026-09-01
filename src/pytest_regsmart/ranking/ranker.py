@@ -7,10 +7,10 @@ import time
 
 import numpy as np
 
-from ..const import LEVEL
+from ..const import RANK_LEVEL
 
 
-def get_test_group(nodeid: str, level: LEVEL) -> str:
+def get_test_group(nodeid: str, level: RANK_LEVEL) -> str:
     """Get test group at different granularity levels.
 
     Given: folder/testfile.py::TestClass::testmethod[param1]
@@ -21,15 +21,15 @@ def get_test_group(nodeid: str, level: LEVEL) -> str:
     """
     test_without_param = nodeid.split("[")[0]
     test_file_path = test_without_param.split("::")[0]
-    if level == LEVEL.FUNCTION:
+    if level == RANK_LEVEL.FUNCTION:
         return test_without_param
-    elif level == LEVEL.MODULE:
+    elif level == RANK_LEVEL.MODULE:
         return test_file_path
     else:
         return nodeid
 
 
-def get_ranking(scores: dict, level: LEVEL, init_order: dict) -> dict:
+def get_ranking(scores: dict, level: RANK_LEVEL, init_order: dict) -> dict:
     """Aggregate scores per test group, sort, return {nodeid: rank}."""
     tests = []
     for nodeid, score in scores.items():
@@ -55,14 +55,14 @@ def get_ranking(scores: dict, level: LEVEL, init_order: dict) -> dict:
 
 def run_rtp(
     items: list,
-    level: LEVEL,
+    level: RANK_LEVEL,
     weights: list[float],
     replay_file: str | None,
     seed: int,
     log_dict: dict,
     load_feature_fn,
 ) -> None:
-    """Orquestra o ranqueamento: replay, random, ou híbrido."""
+    """Orchestrates the ranking: replay, random, or hybrid."""
     init_order = {item.nodeid: i for i, item in enumerate(items)}
     start_time = time.time()
 
@@ -105,4 +105,4 @@ def run_rtp(
     )
     items[:] = od_items + nod_items
 
-    log_dict["Time to reorder tests (s)"] = time.time() - start_time
+    log_dict["Time to run the regression test prioritization (s)"] = time.time() - start_time
