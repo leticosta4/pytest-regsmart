@@ -1,11 +1,9 @@
 import os
-import types
 from pathlib import Path
 
 import pytest
 
 from src.pytest_regsmart.const import DIFF_LEVEL
-from src.pytest_regsmart.plugin import _select_pytest_items_for_rtp
 from src.pytest_regsmart.selection.deps_graph import (
     DependencyGraph,
     FunctionMetadata,
@@ -16,6 +14,7 @@ from src.pytest_regsmart.selection.selector import (
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
     line_diff_match_function_ids,
+    filter_pytest_items_for_rtp,
     run_rts,
 )
 
@@ -188,7 +187,7 @@ def test_function_id_to_pytest_nodeid(function_id, filepath, expected):
 
 
 # ---------------------------------------------------------------------------
-# _select_pytest_items_for_rtp (filtering collected items against the selection)
+# filter_pytest_items_for_rtp (filtering collected items against the selection)
 # ---------------------------------------------------------------------------
 
 
@@ -198,9 +197,8 @@ class _FakeItem:
 
 
 def _select_items(nodeids: list[str], selected_nodes: list[str], level) -> list[str]:
-    fake_self = types.SimpleNamespace(diff_level=level)
     items = [_FakeItem(nodeid) for nodeid in nodeids]
-    _select_pytest_items_for_rtp(fake_self, items, selected_nodes)
+    filter_pytest_items_for_rtp(items, set(selected_nodes), level)
     return [item.nodeid for item in items]
 
 

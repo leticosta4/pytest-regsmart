@@ -122,8 +122,25 @@ def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
     return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
+def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
+    items[:] = (
+        [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
+        if diff_level == DIFF_LEVEL.FILE
+        else [
+            item
+            for item in items
+            if any(
+                item.nodeid == selected_node
+                or item.nodeid.startswith(f"{selected_node}[")
+                or item.nodeid.startswith(f"{selected_node}::")
+                for selected_node in selected_nodes
+            )
+        ]
+    )
+
+
 def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None) -> SelectionResult:
-    """[wip] Orchestrates the selection..."""
+    """Orchestrates the selection..."""
     start_time = time.time()
 
     diff_result = get_git_diff(diff_level=level)
