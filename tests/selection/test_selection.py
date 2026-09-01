@@ -13,8 +13,8 @@ from src.pytest_regsmart.selection.selector import (
     _function_id_to_pytest_nodeid,
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
-    line_diff_match_function_ids,
     filter_pytest_items_for_rtp,
+    line_diff_match_function_ids,
     run_rts,
 )
 

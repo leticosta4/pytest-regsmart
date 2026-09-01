@@ -23,7 +23,7 @@ class PluginConfig:
     branch: str | None = field(default=None, init=False)
  
     @classmethod
-    def from_pytest_config(cls, config: Config) -> "PluginConfig":
+    def from_pytest_config(cls, config: Config) -> PluginConfig:
         return cls(
             diff_level=selection_args.parse_diff_level(config),
             no_rank=rank_args.parse_no_rank(config),
