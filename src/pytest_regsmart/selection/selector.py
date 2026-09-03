@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
-from ..utils import _is_conftest, _is_test_file
+from ..utils import _filter_python_files, _is_conftest, _is_test_file
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
 
@@ -144,6 +144,8 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
     start_time = time.time()
 
     diff_result = get_git_diff(diff_level=level)
+    diff_result.modified_files = _filter_python_files(diff_result.modified_files)
+    diff_result.untracked_files = _filter_python_files(diff_result.untracked_files)
     has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
     used_branch = diff_result.used_branch
 

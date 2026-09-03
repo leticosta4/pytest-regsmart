@@ -423,3 +423,16 @@ def test_run_rts_logs_selection_time_when_selecting(git_repo, commit_file, monke
     run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
 
     assert "Time to run the regression test selection (s)" in log_dict
+
+
+def test_run_rts_non_python_only_diff_selects_nothing(git_repo, commit_file, monkeypatch):
+    _commit_sample_project(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "pyproject.toml").write_text(
+        "[project]\nname = \"demo\"\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FILE)
+
+    assert result.has_diff is False
+    assert result.affected_tests == []
