@@ -7,8 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] pytest-regsmart
-## [0.6.4] - 2026-09-01
- 
+## [0.6.4] - 2026-09-03
+
+### Fixed
+- Git diff now only considers `.py` files for test selection; changes to non-Python files (e.g. `pyproject.toml`) no longer trigger selection or prioritization
 ### Added
 - Compatibility with python 3.13 and 3.14
 ## [0.6.3] - 2026-08-30

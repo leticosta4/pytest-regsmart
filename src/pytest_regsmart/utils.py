@@ -16,6 +16,10 @@ def _find_py_files(working_dir: str) -> list[str]:
     return py_files
 
 
+def _filter_python_files(filepaths: list[str]) -> list[str]:
+    return [f for f in filepaths if f.endswith(".py")]
+
+
 def _is_test_file(filepath: str) -> bool:
     filename = os.path.basename(filepath)
     return filename.startswith("test_") or filename.endswith("_test.py")
