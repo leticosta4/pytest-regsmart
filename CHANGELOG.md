@@ -18,9 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Base branch is now always resolved as the default branch `main`/`master` (local first, then `origin/main`), fixing selection on GitHub Actions full checkouts (`fetch-depth: 0`, PR and push); on a shallow checkout the plugin raises a clear `UsageError` instead of silently running the full suite
 - Selecting a class at `--diff-level=function` now keeps its methods (nodeid matching also accepts a `::` prefix), so editing a class-scope line no longer drops the whole class
+- Run the full test suite when `conftest.py` is among the changed files, since it can alter collection and fixture behaviour globally
+- Handle missing merge-base with the base branch gracefully: selection is skipped with a warning when the base branch exists but shares no history with HEAD
 ### Added
-- Validation for args options in pytest.ini
-- Default values for diff-level, rank-level and no-rank flags in pytest.ini
+- Default values and validation for all ini options (`diff_level`, `no_rank`, `rank_weight`, `rank_replay`, `rank_level`, `rank_hist_len`, `rank_seed`) in pytest.ini
 ## [0.6.2] - 2026-08-22
  
 ### Added

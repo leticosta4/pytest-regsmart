@@ -94,7 +94,6 @@ pytest --regsmart --rank-weight=0-1
 - Weights are separated by ``-``
   - The first weight is for running faster tests
   - The second weight is for running recently failed tests
-  - The third weight is for running tests more similar to the changed `*.py` files since the last run
 - All weights must be integers or floats, and their sum will be normalized to 1
 - A higher weight means that a corresponding heuristic is favored.
 
@@ -123,6 +122,8 @@ You can run/replay tests in a specific order by listing the to-be-run test IDs i
 ```bash
 pytest --regsmart --rank-replay=replay_order.txt
 ```
+
+Note that `--rank-replay` **cannot be combined with random order** (`--rank-weight=0-0`): passing both raises a `UsageError`.
 
 ### Tracking data from historical runs
 
@@ -160,15 +161,18 @@ addopts = --regsmart --rank-weight=0-1 --rank-hist-len=30
 
 and run `pytest` on the command line.
 
-Alternatively, you can also create `pytest.ini` in your codebase root folder as such:
+Alternatively, you can set values directly as ini options (without `addopts`) and run `pytest --regsmart` on the command line:
 
 ```ini
 [pytest]
-rank_weight=0-1
-rank_hist_len=30
+diff_level = function
+no_rank = false
+rank_weight = 1-0
+rank_replay =
+rank_level = put
+rank_hist_len = 50
+rank_seed = 0
 ```
-
-and run `pytest --regsmart` on the command line.
 
 ## How Regression Test Selection (RTS) works
 
@@ -179,11 +183,16 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
    - the diff is the working tree vs the merge-base with that base, so every commit on a PR/branch is compared against `main`/`master`, not against itself;
    - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
 
-2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
+2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
 3. **Propagate changes transitively.** A BFS traversal starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
 4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed.
 
 If there is no diff since the baseline, `pytest-regsmart` skips both dependency-graph generation and test selection, reports a warning, and runs the full test suite. RTP still runs unless `--no-rank` is set; with both no diff and `--no-rank`, the plugin reports that it has no work to do.
+
+Two additional edge cases also cause selection to be skipped (the full suite runs):
+
+- **`conftest.py` changed.** Because `conftest.py` can alter collection and fixture behaviour globally, any change to it disables test selection for that run — the full suite executes instead.
+- **No shared history with the base branch.** If the base branch (`main`/`master`) is resolved but has no merge-base with the current HEAD (e.g. unrelated histories), selection is skipped with a warning.
 
 Because selection granularity follows `--diff-level`, the default `function` level narrows the selection down to the affected test functions, while `file` selects whole files and is therefore intentionally conservative: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary. See [Choosing the diff granularity](#choosing-the-diff-granularity).
 
