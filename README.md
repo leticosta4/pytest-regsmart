@@ -68,7 +68,7 @@ Starting RTS (Regression Test Selection)
 Using --no-rank (RTP disabled).
 ```
 
-Note that `--no-rank` **cannot be combined with other `--rank-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
+Note that `--no-rank` **cannot be combined with other `--ranking-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
 
 ### Choosing the diff granularity
 
@@ -167,11 +167,11 @@ Alternatively, you can set values directly as ini options (without `addopts`) an
 [pytest]
 diff_level = function
 no_rank = false
-rank_weight = 1-0
-rank_replay =
-rank_level = put
-rank_hist_len = 50
-rank_seed = 0
+ranking_weight = 1-0
+ranking_replay =
+ranking_level = put
+ranking_hist_len = 50
+ranking_seed = 0
 ```
 
 ## How Regression Test Selection (RTS) works

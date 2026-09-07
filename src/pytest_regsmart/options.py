@@ -53,7 +53,7 @@ def add_options(parser: Parser) -> None:
         action="store",
         type=rank_args.level_type,
         default=DEFAULT_RANK_LEVEL,
-        dest="rank_level",
+        dest="ranking_level",
         help=RANK_LEVEL_HELP)
  
     group._addoption(
@@ -61,7 +61,7 @@ def add_options(parser: Parser) -> None:
         action="store",
         type=rank_args.weight_type,
         default=DEFAULT_WEIGHT,
-        dest="rank_weight",
+        dest="ranking_weight",
         help=WEIGHT_HELP)
  
     group._addoption(
@@ -69,14 +69,14 @@ def add_options(parser: Parser) -> None:
         action="store",
         type=rank_args.replay_type,
         default=DEFAULT_REPLAY,
-        dest="rank_replay",
+        dest="ranking_replay",
         help=REPLAY_HELP)
  
     group._addoption(
         "--ranking-hist-len",
         action="store",
         type=int,
-        dest="rank_hist_len",
+        dest="ranking_hist_len",
         default=DEFAULT_HIST_LEN,
         help=HIST_LEN_HELP)
  
@@ -84,7 +84,7 @@ def add_options(parser: Parser) -> None:
         "--ranking-seed",
         action="store",
         type=int,
-        dest="rank_seed",
+        dest="ranking_seed",
         default=DEFAULT_SEED,
         help=SEED_HELP)
  
