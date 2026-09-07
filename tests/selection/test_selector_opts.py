@@ -177,16 +177,16 @@ def test_diff_level_ini_option_used_when_cli_absent(selection_project):
     assert _ran_files(out) == ["test_extra.py"]
 
 
-def test_invalid_rank_weight_ini_raises_usage_error(selection_project):
+def test_invalid_ranking_weight_ini_raises_usage_error(selection_project):
     pytester, repo = selection_project
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
     (Path(repo.working_tree_dir) / "pytest.ini").write_text(
-        "[pytest]\nconsole_output_style = classic\nrank_weight = 1-3-2\n"
+        "[pytest]\nconsole_output_style = classic\nranking_weight = 1-3-2\n"
     )
 
     out = pytester.runpytest("-v", "--regsmart")
 
-    assert any("rank_weight" in x for x in out.errlines)
+    assert any("ranking_weight" in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
 
 
@@ -210,13 +210,13 @@ def test_report_header_shows_diff_level(selection_project):
     assert any("Using --diff-level=function" in x for x in out.outlines)
 
 
-def test_selection_with_rank_levels(selection_project):
+def test_selection_with_ranking_levels(selection_project):
     pytester, repo = selection_project
     pytester.runpytest("-v")
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
 
     for level in ("put", "function", "module"):
-        out = pytester.runpytest("-v", "--regsmart", f"--rank-level={level}")
+        out = pytester.runpytest("-v", "--regsmart", f"--ranking-level={level}")
 
         out.assert_outcomes(passed=3)
         assert _ran_files(out) == ["test_other.py", "test_service.py"]
@@ -233,7 +233,7 @@ def test_selection_with_replay_order(selection_project):
         """
     )
 
-    out = pytester.runpytest("-v", "--regsmart", "--rank-replay=replay_order.txt")
+    out = pytester.runpytest("-v", "--regsmart", "--ranking-replay=replay_order.txt")
 
     out.assert_outcomes(passed=3)
     test_lines = [x for x in out.outlines if "::" in x and "PASSED" in x]
@@ -245,7 +245,7 @@ def test_selection_with_random_model(selection_project):
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
 
     out = pytester.runpytest(
-        "-v", "--regsmart", "--rank-weight=0-0", "--rank-seed=42"
+        "-v", "--regsmart", "--ranking-weight=0-0", "--ranking-seed=42"
     )
 
     out.assert_outcomes(passed=3)

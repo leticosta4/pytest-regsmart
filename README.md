@@ -35,11 +35,11 @@ Before the test run starts, if `--regsmart` is passed, the terminal header will 
 ```
 Starting Smart Regression Test Management (RTS + RTP)
 Using --diff-level=function
-Using --rank-weight=1-0
-Using --rank-level=put
-Using --rank-hist-len=50
-Using --rank-seed=123
-Using --rank-replay=None
+Using --ranking-weight=1-0
+Using --ranking-level=put
+Using --ranking-hist-len=50
+Using --ranking-seed=123
+Using --ranking-replay=None
 ```
 
 After the test run finishes, the terminal summary will show the overhead of `pytest-regsmart` in this run, for example:
@@ -68,7 +68,7 @@ Starting RTS (Regression Test Selection)
 Using --no-rank (RTP disabled).
 ```
 
-Note that `--no-rank` **cannot be combined with other `--rank-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
+Note that `--no-rank` **cannot be combined with other `--ranking-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
 
 ### Choosing the diff granularity
 
@@ -85,10 +85,10 @@ This option can also be configured via the `diff_level` ini option (see [Setting
 
 ### Optimizing test prioritization heuristics
 
-You can set the weights of different test prioritization heuristics by passing the optional `--rank-weight` flag with formatted values:
+You can set the weights of different test prioritization heuristics by passing the optional `--ranking-weight` flag with formatted values:
 
 ```bash
-pytest --regsmart --rank-weight=0-1
+pytest --regsmart --ranking-weight=0-1
 ```
 
 - Weights are separated by ``-``
@@ -101,10 +101,10 @@ The default value is ``1-0``, which only prioritizes faster tests.
 
 ### Optimizing test prioritization levels
 
-You can set at which level of your test suite will be reordered, by passing the optional `--rank-level` flag in one of these values: `put`, `function`, `module`. For example:
+You can set at which level of your test suite will be reordered, by passing the optional `--ranking-level` flag in one of these values: `put`, `function`, `module`. For example:
 
 ```bash
-pytest --regsmart --rank-level=function
+pytest --regsmart --ranking-level=function
 ```
 
 - The smallest test item that can be reordered in pytest test suite is [parametrized unit test](https://docs.pytest.org/en/7.1.x/example/parametrize.html) (PUT)
@@ -117,20 +117,20 @@ The default value is `put`.
 
 ### Replaying specified test order
 
-You can run/replay tests in a specific order by listing the to-be-run test IDs in a text file, where each line is a test ID, and pass the file path to the optional `--rank-replay` flag:
+You can run/replay tests in a specific order by listing the to-be-run test IDs in a text file, where each line is a test ID, and pass the file path to the optional `--ranking-replay` flag:
 
 ```bash
-pytest --regsmart --rank-replay=replay_order.txt
+pytest --regsmart --ranking-replay=replay_order.txt
 ```
 
-Note that `--rank-replay` **cannot be combined with random order** (`--rank-weight=0-0`): passing both raises a `UsageError`.
+Note that `--ranking-replay` **cannot be combined with random order** (`--ranking-weight=0-0`): passing both raises a `UsageError`.
 
 ### Tracking data from historical runs
 
-You can also set the maximum value of *the number test runs since a test's last failure* that could be recorded for each test, by passing the optional `--rank-hist-len` flag:
+You can also set the maximum value of *the number test runs since a test's last failure* that could be recorded for each test, by passing the optional `--ranking-hist-len` flag:
 
 ```bash
-pytest --regsmart --rank-hist-len=30
+pytest --regsmart --ranking-hist-len=30
 ```
 
 The default value is 50.
@@ -138,12 +138,12 @@ Note that `pytest-regsmart` does not store any historical test run logs, it mere
 
 ### Running tests in random order
 
-You can prompt `pytest-regsmart` to run tests in random order, by setting the sum of `--rank-weight` option to 0, e.g., `--rank-weight=0-0`.
-You can also set the seed used when running tests in random order, via setting an integer to the option `--rank-seed`.
+You can prompt `pytest-regsmart` to run tests in random order, by setting the sum of `--ranking-weight` option to 0, e.g., `--ranking-weight=0-0`.
+You can also set the seed used when running tests in random order, via setting an integer to the option `--ranking-seed`.
 For example, the command below runs tests randomly with seed `1234`:
 
 ```bash
-pytest --regsmart --rank-weight=0-0 --rank-seed=1234
+pytest --regsmart --ranking-weight=0-0 --ranking-seed=1234
 ```
 
 By default, `pytest-regsmart` uses `0` as the seed.
@@ -156,7 +156,7 @@ For example, create `pytest.ini` in your codebase root folder as such:
 
 ```ini
 [pytest]
-addopts = --regsmart --rank-weight=0-1 --rank-hist-len=30
+addopts = --regsmart --ranking-weight=0-1 --ranking-hist-len=30
 ```
 
 and run `pytest` on the command line.
@@ -167,11 +167,11 @@ Alternatively, you can set values directly as ini options (without `addopts`) an
 [pytest]
 diff_level = function
 no_rank = false
-rank_weight = 1-0
-rank_replay =
-rank_level = put
-rank_hist_len = 50
-rank_seed = 0
+ranking_weight = 1-0
+ranking_replay =
+ranking_level = put
+ranking_hist_len = 50
+ranking_seed = 0
 ```
 
 ## How Regression Test Selection (RTS) works
@@ -203,7 +203,7 @@ After selection, `pytest-regsmart` reorders the remaining tests so that failures
 - **Faster tests first**, based on their recorded execution durations from previous runs;
 - **Recently failed tests first**, based on how many runs have passed since each test's last failure.
 
-Weights are set with `--rank-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--rank-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--rank-replay`) and random order (`--rank-weight=0-0`, seeded by `--rank-seed`). Tests carrying an `order` or `dependency` marker always run first, in their declared order.
+Weights are set with `--ranking-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). Tests carrying an `order` or `dependency` marker always run first, in their declared order.
 
 See [Usage](#usage) for all available options.
 

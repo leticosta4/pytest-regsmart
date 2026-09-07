@@ -94,7 +94,7 @@ def test_parse_replay_default_none_when_ini_unset():
 def test_parse_replay_ini_missing_file_raises_usage_error(tmp_path):
     config = _FakeConfig(option=None, ini=str(tmp_path / "missing.txt"))
 
-    with pytest.raises(pytest.UsageError, match="rank_replay"):
+    with pytest.raises(pytest.UsageError, match="ranking_replay"):
         parse_replay(config)
 
 
@@ -143,11 +143,11 @@ def test_parse_no_rank(option, ini, expected):
 @pytest.mark.parametrize(
     ("parse_fn", "option", "ini", "match"),
     [
-        pytest.param(parse_rtp_weights, "1-0", "1-3-2", "rank_weight", id="weight too many parts"),
-        pytest.param(parse_rtp_weights, "1-0", "x-y", "rank_weight", id="weight non numeric parts"),
-        pytest.param(parse_rtp_level, RANK_LEVEL.PUT, "class", "rank_level", id="level unknown value"),
-        pytest.param(parse_hist_len, 50, "abc", "rank_hist_len", id="hist len not an integer"),
-        pytest.param(parse_seed, 0, "not-a-number", "rank_seed", id="seed not an integer"),
+        pytest.param(parse_rtp_weights, "1-0", "1-3-2", "ranking_weight", id="weight too many parts"),
+        pytest.param(parse_rtp_weights, "1-0", "x-y", "ranking_weight", id="weight non numeric parts"),
+        pytest.param(parse_rtp_level, RANK_LEVEL.PUT, "class", "ranking_level", id="level unknown value"),
+        pytest.param(parse_hist_len, 50, "abc", "ranking_hist_len", id="hist len not an integer"),
+        pytest.param(parse_seed, 0, "not-a-number", "ranking_seed", id="seed not an integer"),
     ],
 )
 def test_invalid_ini_value_raises_usage_error(parse_fn, option, ini, match):

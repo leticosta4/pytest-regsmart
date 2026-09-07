@@ -19,20 +19,20 @@ def pytest_report_header(config: Config) -> str | None:
         ]
 
     diff_level = config.getoption("--diff-level")
-    weight = config.getoption("--rank-weight")
-    replay = config.getoption("--rank-replay")
-    rank_level = config.getoption("--rank-level")
-    hist_len = config.getoption("--rank-hist-len")
-    random_seed = config.getoption("--rank-seed")
+    weight = config.getoption("--ranking-weight")
+    replay = config.getoption("--ranking-replay")
+    ranking_level = config.getoption("--ranking-level")
+    hist_len = config.getoption("--ranking-hist-len")
+    random_seed = config.getoption("--ranking-seed")
     return [
         "\nStarting Smart Regression Test Management (RTS + RTP)",
     ] + [
         f"Using --diff-level={diff_level}",
-        f"Using --rank-weight={weight}",
-        f"Using --rank-level={rank_level}",
-        f"Using --rank-hist-len={hist_len}",
-        f"Using --rank-seed={random_seed}",
-        f"Using --rank-replay={replay}",
+        f"Using --ranking-weight={weight}",
+        f"Using --ranking-level={ranking_level}",
+        f"Using --ranking-hist-len={hist_len}",
+        f"Using --ranking-seed={random_seed}",
+        f"Using --ranking-replay={replay}",
     ]
 
 

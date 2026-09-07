@@ -26,7 +26,7 @@ def weight_type(string: str) -> str:
         return string
     except (AssertionError, ValueError):
         raise argparse.ArgumentTypeError(
-            "Cannot parse input for `--rank-weight`."
+            "Cannot parse input for `--ranking-weight`."
             + "Valid examples: 1-0, 0.4-0.2, and 2-7."
         ) from None
 
@@ -42,7 +42,7 @@ def level_type(string: str) -> str:
     except AssertionError:
         valid = ", ".join(item.value for item in RANK_LEVEL)
         raise argparse.ArgumentTypeError(
-            f"Invalid input for `--rank-level`: '{string}'. Valid values: {valid}."
+            f"Invalid input for `--ranking-level`: '{string}'. Valid values: {valid}."
         ) from None
 
 
@@ -56,7 +56,7 @@ def replay_type(string: str) -> str:
         return string
     except Exception:  # noqa: BLE001
         raise argparse.ArgumentTypeError(
-            "File provided to `--rank-replay` cannot be read."
+            "File provided to `--ranking-replay` cannot be read."
             + " Please run `pytest --help` for instruction."
         ) from None
 
@@ -67,7 +67,7 @@ def hist_len_type(string) -> int:
         return int(string)
     except (TypeError, ValueError):
         raise argparse.ArgumentTypeError(
-            f"Invalid input for `--rank-hist-len`: '{string}'. It must be an integer."
+            f"Invalid input for `--ranking-hist-len`: '{string}'. It must be an integer."
         ) from None
 
 
@@ -77,7 +77,7 @@ def seed_type(string) -> int:
         return int(string)
     except (TypeError, ValueError):
         raise argparse.ArgumentTypeError(
-            f"Invalid input for `--rank-seed`: '{string}'. It must be an integer."
+            f"Invalid input for `--ranking-seed`: '{string}'. It must be an integer."
         ) from None
 
 
@@ -94,9 +94,9 @@ def parse_rtp_weights(config) -> list[float]:
     """Get weights, non-default CLI overrides ini file input."""
     weights = _resolve_ini_value(
         config,
-        cli_opt="--rank-weight",
+        cli_opt="--ranking-weight",
         default=DEFAULT_WEIGHT,
-        ini_key="rank_weight",
+        ini_key="ranking_weight",
         type_fn=weight_type,
     )
 
@@ -111,9 +111,9 @@ def parse_rtp_level(config) -> str:
     """Get test group level, non-default CLI overrides ini file input."""
     return _resolve_ini_value(
         config,
-        cli_opt="--rank-level",
+        cli_opt="--ranking-level",
         default=DEFAULT_RANK_LEVEL,
-        ini_key="rank_level",
+        ini_key="ranking_level",
         type_fn=level_type,
     )
 
@@ -122,9 +122,9 @@ def parse_replay(config) -> str | None:
     """Get replay file, non-default CLI overrides ini file input."""
     return _resolve_ini_value(
         config,
-        cli_opt="--rank-replay",
+        cli_opt="--ranking-replay",
         default=DEFAULT_REPLAY,
-        ini_key="rank_replay",
+        ini_key="ranking_replay",
         type_fn=replay_type,
     )
 
@@ -133,9 +133,9 @@ def parse_hist_len(config) -> int:
     """Get history length, non-default CLI overrides ini file input."""
     return _resolve_ini_value(
         config,
-        cli_opt="--rank-hist-len",
+        cli_opt="--ranking-hist-len",
         default=DEFAULT_HIST_LEN,
-        ini_key="rank_hist_len",
+        ini_key="ranking_hist_len",
         type_fn=hist_len_type,
     )
 
@@ -144,9 +144,9 @@ def parse_seed(config) -> int:
     """Get random seed, non-default CLI overrides ini file input."""
     return _resolve_ini_value(
         config,
-        cli_opt="--rank-seed",
+        cli_opt="--ranking-seed",
         default=DEFAULT_SEED,
-        ini_key="rank_seed",
+        ini_key="ranking_seed",
         type_fn=seed_type,
     )
 

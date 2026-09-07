@@ -29,11 +29,11 @@ def test_no_rank_disables_rtp(mytester):
 
 
 @pytest.mark.parametrize("ranking_flag", [
-    "--rank-weight=0-1",
-    "--rank-weight=1-0",
-    "--rank-level=function",
-    "--rank-hist-len=30",
-    "--rank-seed=42",
+    "--ranking-weight=0-1",
+    "--ranking-weight=1-0",
+    "--ranking-level=function",
+    "--ranking-hist-len=30",
+    "--ranking-seed=42",
 ])
 def test_no_rank_with_ranking_flag_error(mytester, ranking_flag):
     mytester.makepyfile(test_method_one=test_method_one)
@@ -67,9 +67,9 @@ def test_no_rank_header_and_summary(mytester):
     assert any("Time to collect test features (s)" in x for x in out.outlines)
 
     log_lines = (
-        "Using --rank-weight",
-        "Using --rank-level",
-        "Using --rank-hist-len",
-        "Using --rank-seed",
+        "Using --ranking-weight",
+        "Using --ranking-level",
+        "Using --ranking-hist-len",
+        "Using --ranking-seed",
     )
     assert len([x for x in out.outlines if x.startswith(log_lines)]) == 0
