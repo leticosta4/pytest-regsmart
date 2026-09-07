@@ -7,7 +7,7 @@ from _pytest.config import Config
 from _pytest.reports import TestReport
 
 from ..const import DATA_DIR
-from .ranking_args import min_max_normalization
+from .rank_args import min_max_normalization
 
 
 def load_feature(

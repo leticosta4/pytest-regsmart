@@ -3,7 +3,7 @@ from __future__ import annotations
 from _pytest.config import Config
 from _pytest.terminal import TerminalReporter
 
-from .ranking.ranking_args import parse_no_rank
+from .ranking.rank_args import parse_no_rank
 
 
 def pytest_report_header(config: Config) -> str | None:

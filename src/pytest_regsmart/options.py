@@ -22,7 +22,7 @@ from .help_strings import (
     SEED_HELP,
     WEIGHT_HELP,
 )
-from .ranking import ranking_args
+from .ranking import rank_args
 from .selection import git_manager, selection_args
 
 
@@ -51,7 +51,7 @@ def add_options(parser: Parser) -> None:
     group._addoption(
         "--ranking-level",
         action="store",
-        type=ranking_args.level_type,
+        type=rank_args.level_type,
         default=DEFAULT_RANK_LEVEL,
         dest="rank_level",
         help=RANK_LEVEL_HELP)
@@ -59,7 +59,7 @@ def add_options(parser: Parser) -> None:
     group._addoption(
         "--ranking-weight",
         action="store",
-        type=ranking_args.weight_type,
+        type=rank_args.weight_type,
         default=DEFAULT_WEIGHT,
         dest="rank_weight",
         help=WEIGHT_HELP)
@@ -67,7 +67,7 @@ def add_options(parser: Parser) -> None:
     group._addoption(
         "--ranking-replay",
         action="store",
-        type=ranking_args.replay_type,
+        type=rank_args.replay_type,
         default=DEFAULT_REPLAY,
         dest="rank_replay",
         help=REPLAY_HELP)
