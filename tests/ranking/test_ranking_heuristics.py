@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pytest_regsmart.ranking.ranking_args import min_max_normalization
+
 from tests.fake_test_data import test_class_one, test_method_one
 
 
