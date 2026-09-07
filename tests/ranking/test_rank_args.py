@@ -1,7 +1,7 @@
 import pytest
 
 from src.pytest_regsmart.const import RANK_LEVEL
-from src.pytest_regsmart.ranking.rank_args import (
+from src.pytest_regsmart.ranking.ranking_args import (
     parse_hist_len,
     parse_no_rank,
     parse_replay,

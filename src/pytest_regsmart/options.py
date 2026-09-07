@@ -22,7 +22,7 @@ from .help_strings import (
     SEED_HELP,
     WEIGHT_HELP,
 )
-from .ranking import rank_args
+from .ranking import ranking_args
 from .selection import git_manager, selection_args
 
 
@@ -49,31 +49,31 @@ def add_options(parser: Parser) -> None:
         help=NO_RANK_HELP)
  
     group._addoption(
-        "--rank-level",
+        "--ranking-level",
         action="store",
-        type=rank_args.level_type,
+        type=ranking_args.level_type,
         default=DEFAULT_RANK_LEVEL,
         dest="rank_level",
         help=RANK_LEVEL_HELP)
  
     group._addoption(
-        "--rank-weight",
+        "--ranking-weight",
         action="store",
-        type=rank_args.weight_type,
+        type=ranking_args.weight_type,
         default=DEFAULT_WEIGHT,
         dest="rank_weight",
         help=WEIGHT_HELP)
  
     group._addoption(
-        "--rank-replay",
+        "--ranking-replay",
         action="store",
-        type=rank_args.replay_type,
+        type=ranking_args.replay_type,
         default=DEFAULT_REPLAY,
         dest="rank_replay",
         help=REPLAY_HELP)
  
     group._addoption(
-        "--rank-hist-len",
+        "--ranking-hist-len",
         action="store",
         type=int,
         dest="rank_hist_len",
@@ -81,7 +81,7 @@ def add_options(parser: Parser) -> None:
         help=HIST_LEN_HELP)
  
     group._addoption(
-        "--rank-seed",
+        "--ranking-seed",
         action="store",
         type=int,
         dest="rank_seed",
@@ -92,18 +92,18 @@ def add_options(parser: Parser) -> None:
 def add_ini_options(parser: Parser) -> None:
     parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL.value)
     parser.addini("no_rank", NO_RANK_HELP, type="bool", default=False)
-    parser.addini("rank_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
-    parser.addini("rank_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
-    parser.addini("rank_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL.value)
-    parser.addini("rank_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
-    parser.addini("rank_seed", SEED_HELP, default=DEFAULT_SEED)
+    parser.addini("ranking_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
+    parser.addini("ranking_replay", REPLAY_HELP, default=DEFAULT_REPLAY)
+    parser.addini("ranking_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL.value)
+    parser.addini("ranking_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
+    parser.addini("ranking_seed", SEED_HELP, default=DEFAULT_SEED)
 
 
 def validate_options(config: Config) -> None:
-    """Valida combinações inválidas de flags antes de o plugin ser registrado."""
+    """Validate flags combinations before plugin registration."""
     if config.getoption("--regsmart") and config.getoption("--no-rank"):
         for arg in config.invocation_params.args:
-            if arg.startswith("--rank-"):
+            if arg.startswith("--ranking-"):
                 raise pytest.UsageError(
                     "--no-rank cannot be used together with other ranking flags. It excludes RTP."
                 )
@@ -111,7 +111,7 @@ def validate_options(config: Config) -> None:
     if config.getoption("--regsmart") and not git_manager.verify_git_repo():
         raise pytest.UsageError("--regsmart requires a git repository.")
  
-    if config.getoption("--rank-replay") and config.getoption("--rank-weight") == "0-0":
+    if config.getoption("--ranking-replay") and config.getoption("--ranking-weight") == "0-0":
         raise pytest.UsageError(
-            "--rank-replay cannot be used together with random order."
+            "--ranking-replay cannot be used together with random order."
         )

@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] pytest-regsmart
+
+## [0.7.0] - 2026-09-03
+
+### Changed
+- Replace prefix `rank` by `ranking` in ranking flags (ranking-weight, ranking-level, ranking-hist-len, ranking-seed, ranking-replay) to avoid conflict with pytest-ranking flags, such as what happened here: https://github.com/leticosta4/pytest-regsmart-tcc-test/actions/runs/34164949917/job/101874044207
 ## [0.6.4] - 2026-09-03
 
 ### Fixed

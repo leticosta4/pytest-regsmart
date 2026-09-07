@@ -216,7 +216,7 @@ def test_selection_with_rank_levels(selection_project):
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
 
     for level in ("put", "function", "module"):
-        out = pytester.runpytest("-v", "--regsmart", f"--rank-level={level}")
+        out = pytester.runpytest("-v", "--regsmart", f"--ranking-level={level}")
 
         out.assert_outcomes(passed=3)
         assert _ran_files(out) == ["test_other.py", "test_service.py"]
@@ -233,7 +233,7 @@ def test_selection_with_replay_order(selection_project):
         """
     )
 
-    out = pytester.runpytest("-v", "--regsmart", "--rank-replay=replay_order.txt")
+    out = pytester.runpytest("-v", "--regsmart", "--ranking-replay=replay_order.txt")
 
     out.assert_outcomes(passed=3)
     test_lines = [x for x in out.outlines if "::" in x and "PASSED" in x]
@@ -245,7 +245,7 @@ def test_selection_with_random_model(selection_project):
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
 
     out = pytester.runpytest(
-        "-v", "--regsmart", "--rank-weight=0-0", "--rank-seed=42"
+        "-v", "--regsmart", "--ranking-weight=0-0", "--ranking-seed=42"
     )
 
     out.assert_outcomes(passed=3)

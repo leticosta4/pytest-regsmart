@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pytest_regsmart.ranking.rank_args import min_max_normalization
+from pytest_regsmart.ranking.ranking_args import min_max_normalization
 from tests.fake_test_data import test_class_one, test_method_one
 
 
@@ -45,7 +45,7 @@ def test_faster_test_first(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--regsmart", "--rank-weight=1-0"]
+    args = ["-v", "--regsmart", "--ranking-weight=1-0"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -72,7 +72,7 @@ def test_recent_fail_first(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--regsmart", "--rank-weight=0-1"]
+    args = ["-v", "--regsmart", "--ranking-weight=0-1"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
@@ -99,7 +99,7 @@ def test_550_weight(mytester):
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=4, failed=2)
 
-    args = ["-v", "--regsmart", "--rank-weight=5-5"]
+    args = ["-v", "--regsmart", "--ranking-weight=5-5"]
     out = mytester.runpytest(*args)
 
     out.assert_outcomes(passed=4, failed=2)
