@@ -1,4 +1,6 @@
 import pytest
+
+from src.pytest_regsmart.const import RANK_LEVEL
 from src.pytest_regsmart.ranking.rank_args import (
     parse_hist_len,
     parse_no_rank,
@@ -7,8 +9,6 @@ from src.pytest_regsmart.ranking.rank_args import (
     parse_rtp_weights,
     parse_seed,
 )
-
-from src.pytest_regsmart.const import RANK_LEVEL
 
 
 class _FakeConfig:
