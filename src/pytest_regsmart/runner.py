@@ -57,12 +57,12 @@ class PluginRunner:  #pytest hooks
 
         elif not selection.has_diff:
             self.warnings.append(
-                "No diff detected: regression test selection was skipped. The value set "
+                "No diff detected in Python files: regression test selection was skipped. The value set "
                 "for '--diff-level' was ignored."
             )
             if no_rank:
                 self.warnings.append(
-                    "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+                    "No diff detected in Python files and --no-rank enabled: pytest-regsmart is not doing anything."
                 )
 
         elif selection.full_run:

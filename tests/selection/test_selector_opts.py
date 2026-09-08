@@ -270,7 +270,7 @@ def test_no_diff_with_rank_runs_everything(selection_project):
 
     out.assert_outcomes(passed=4)
     assert any(
-        "No diff detected: regression test selection was skipped." in x
+        "No diff detected in Python files: regression test selection was skipped." in x
         for x in out.outlines
     )
     assert not any(
@@ -285,7 +285,7 @@ def test_no_diff_with_no_rank_plugin_does_nothing(selection_project):
 
     out.assert_outcomes(passed=4)
     assert any(
-        "No diff detected and --no-rank enabled: pytest-regsmart is not doing anything."
+        "No diff detected in Python files and --no-rank enabled: pytest-regsmart is not doing anything."
         in x for x in out.outlines
     )
 
