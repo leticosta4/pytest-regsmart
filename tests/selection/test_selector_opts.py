@@ -42,6 +42,27 @@ def test_regsmart_requires_git_repo(pytester):
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
 
 
+def test_single_collected_test_skips_rts_and_rtp(selection_project):
+    pytester, _repo = selection_project
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "test_service.py::test_service_fast"
+    )
+
+    out.assert_outcomes(passed=1)
+    assert any(
+        "RTS and RTP skipped: only 1 test was collected." in x
+        for x in out.outlines
+    )
+    assert not any(
+        "Time to run the regression test selection (s)" in x for x in out.outlines
+    )
+    assert not any(
+        "Time to run the regression test prioritization (s)" in x for x in out.outlines
+    )
+    assert not any(x.startswith("Default branch used") for x in out.outlines)
+
+
 def test_single_selected_test_skips_rtp(selection_project):
     pytester, repo = selection_project
     _commit_new_file(

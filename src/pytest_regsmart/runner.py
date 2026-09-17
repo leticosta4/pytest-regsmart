@@ -29,6 +29,13 @@ class PluginRunner:  #pytest hooks
             return
  
         plugin = self.plugin_config
+
+        if len(items) == 1:
+            self.warnings.append(
+                "RTS and RTP skipped: only 1 test was collected."
+            )
+            return
+
         selection = selector.run_rts(level=plugin.diff_level, log_dict=self.log)
         plugin.branch = selection.branch
 
