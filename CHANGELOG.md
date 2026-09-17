@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.7.1] - 2026-09-17
+
+### Changed
+- Skip RTP when only one test is selected by RTS, since there is nothing to reorder (summary reports `RTP skipped: only 1 test was selected, nothing to reorder.`)
+- Skip both RTS and RTP when pytest collects exactly one test (e.g. a single node id or a `-k` filter matching one test), respecting the explicit selection and avoiding the dependency-graph build (summary reports `RTS and RTP skipped: only 1 test was collected.`)
 ## [0.7.0] - 2026-09-03
 
 ### Changed

@@ -205,6 +205,8 @@ After selection, `pytest-regsmart` reorders the remaining tests so that failures
 
 Weights are set with `--ranking-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). Tests carrying an `order` or `dependency` marker always run first, in their declared order.
 
+RTP is skipped whenever there is nothing to reorder, independently of which ranking flags are in use. If the selection leaves a single test, the prioritization step is skipped and the summary reports `RTP skipped: only 1 test was selected, nothing to reorder.` When pytest itself collects exactly one test (e.g. a single node id passed on the command line or a `-k` filter matching one test), both RTS and RTP are skipped entirely, and the summary reports `RTS and RTP skipped: only 1 test was collected.`
+
 See [Usage](#usage) for all available options.
 
 ## Deployment (wip)

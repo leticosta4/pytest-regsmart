@@ -29,6 +29,13 @@ class PluginRunner:  #pytest hooks
             return
  
         plugin = self.plugin_config
+
+        if len(items) == 1:
+            self.warnings.append(
+                "RTS and RTP skipped: only 1 test was collected."
+            )
+            return
+
         selection = selector.run_rts(level=plugin.diff_level, log_dict=self.log)
         plugin.branch = selection.branch
 
@@ -39,11 +46,16 @@ class PluginRunner:  #pytest hooks
             selector.filter_pytest_items_for_rtp(items, set(selection.affected_tests), plugin.diff_level)
  
         if not plugin.no_rank:
-            ranker.run_rtp(
-                items, plugin.level, plugin.weights, plugin.replay_file, plugin.seed, self.log,
-                lambda feature_name, items, reverse:
-                    extractor.load_feature(self.config, feature_name, items, reverse),
-            )
+            if len(items) > 1:
+                ranker.run_rtp(
+                    items, plugin.level, plugin.weights, plugin.replay_file, plugin.seed, self.log,
+                    lambda feature_name, items, reverse:
+                        extractor.load_feature(self.config, feature_name, items, reverse),
+                )
+            elif len(items) == 1:
+                self.warnings.append(
+                    "RTP skipped: only 1 test was selected, nothing to reorder."
+                )
 
 
     def _collect_selection_warnings(self, selection, no_rank: bool) -> None:
