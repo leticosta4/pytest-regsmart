@@ -42,6 +42,38 @@ def test_regsmart_requires_git_repo(pytester):
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
 
 
+def test_single_selected_test_skips_rtp(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_specific.py",
+        "from extra import alpha\n\n"
+        'def test_alpha():\n    assert alpha() == "a"\n',
+    )
+    _change(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"  # touched\n\n\ndef beta():\n    return "b"\n',
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--ranking-weight=1-0")
+
+    out.assert_outcomes(passed=1)
+    assert _ran_files(out) == ["test_specific.py"]
+    assert any(
+        "RTP skipped: only 1 test was selected, nothing to reorder." in x
+        for x in out.outlines
+    )
+    assert not any(
+        "Time to run the regression test prioritization (s)" in x for x in out.outlines
+    )
+
+
 def test_selection_no_rank_only_affected_in_collection_order(selection_project):
     pytester, repo = selection_project
     _change(repo, "service.py", "def run():\n    return 42  # changed\n")
