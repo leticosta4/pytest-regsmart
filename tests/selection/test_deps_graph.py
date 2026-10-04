@@ -5,18 +5,24 @@ import os
 from pathlib import Path
 
 from pyan.analyzer import CallGraphVisitor
-from pytest import mark, param
+from pytest import mark, param, raises
 
 from pytest_regsmart.const import DIFF_LEVEL
+from src.pytest_regsmart.selection import deps_graph
 from src.pytest_regsmart.selection.deps_graph import (
+    DependencyGraph,
     FunctionMetadata,
     _build_import_name_to_path,
     _convert_module_to_relative_path,
     _extract_function_nodes,
     _find_py_files,
     _invert_dependency_map,
+    _readable_python_files,
     get_dependency_graph,
 )
+
+_LATIN1_BYTES = b"# -*- coding: latin-1 -*-\nNAME = 'caf\xe9'\n"
+_PY2_SOURCE = 'print "legacy code"\n'
 
 
 def _write(tmp_path: Path, relpath: str, content: str = "") -> Path:
@@ -24,6 +30,28 @@ def _write(tmp_path: Path, relpath: str, content: str = "") -> Path:
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(content)
     return filepath
+
+
+def _write_bytes(tmp_path: Path, relpath: str, content: bytes) -> Path:
+    filepath = tmp_path / relpath
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_bytes(content)
+    return filepath
+
+
+def _unparseable_files(repo, count: int) -> list[Path]:
+    root = Path(repo.working_tree_dir)
+    return [
+        _write(root, f"legacy_{index}.py", f"print 'legacy {index}'\n")
+        for index in range(count)
+    ]
+
+
+def _raiser(exc: Exception):
+    def _build(*args, **kwargs):
+        raise exc
+
+    return _build
 
 
 # ---------------------------------------------------------------------------
@@ -502,3 +530,184 @@ def test_get_dependency_graph_defaults_to_function_level(git_repo):
     assert "mypkg.service.run" in graph.dependents
     assert graph.function_nodes
     assert "mypkg/service.py" not in graph.dependents
+
+
+# ---------------------------------------------------------------------------
+# _readable_python_files
+# ---------------------------------------------------------------------------
+
+
+def test_readable_python_files_keeps_utf8_files_in_order(tmp_path):
+    first = _write(tmp_path, "app/first.py", "x = 1\n")
+    second = _write(tmp_path, "app/second.py", "y = 2\n")
+
+    assert _readable_python_files([str(first), str(second)]) == [
+        str(first),
+        str(second),
+    ]
+
+
+def test_readable_python_files_drops_non_utf8_file(tmp_path, caplog):
+    good = _write(tmp_path, "app/good.py", "x = 1\n")
+    latin1 = _write_bytes(tmp_path, "app/legacy.py", _LATIN1_BYTES)
+
+    with caplog.at_level(logging.WARNING, logger=deps_graph._logger.name):
+        readable = _readable_python_files([str(good), str(latin1)])
+
+    assert readable == [str(good)]
+    message = caplog.text
+    assert "legacy.py" in message
+    assert "UnicodeDecodeError" in message
+
+
+def test_readable_python_files_drops_unopenable_files(tmp_path, caplog):
+    good = _write(tmp_path, "app/good.py", "x = 1\n")
+    missing = tmp_path / "app" / "missing.py"
+    a_directory = tmp_path / "app"
+
+    with caplog.at_level(logging.WARNING, logger=deps_graph._logger.name):
+        readable = _readable_python_files([str(good), str(missing), str(a_directory)])
+
+    assert readable == [str(good)]
+    assert "FileNotFoundError" in caplog.text
+    assert "IsADirectoryError" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# get_dependency_graph (unreadable files)
+# ---------------------------------------------------------------------------
+
+
+def test_get_dependency_graph_file_level_ignores_non_utf8_files(git_repo, caplog):
+    _build_sample_project(git_repo)
+    _write_bytes(Path(git_repo.working_tree_dir), "legacy_encoded.py", _LATIN1_BYTES)
+
+    with caplog.at_level(logging.WARNING, logger=deps_graph._logger.name):
+        graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert graph.dependents["mypkg/service.py"] == {
+        "mypkg/main.py",
+        "tests/test_app.py",
+    }
+    assert "legacy_encoded.py" not in graph.dependents
+    assert "UnicodeDecodeError" in caplog.text
+
+
+def test_get_dependency_graph_function_level_ignores_non_utf8_files(git_repo):
+    _build_function_sample_project(git_repo)
+    _write_bytes(Path(git_repo.working_tree_dir), "legacy_encoded.py", _LATIN1_BYTES)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FUNCTION)
+
+    assert graph.dependents == {
+        "mypkg.service.run": {"mypkg.main.main", "tests.test_app.test_app"},
+        "mypkg.service.helper": {"tests.test_app.test_helper"},
+    }
+    assert all("legacy_encoded" not in filepath for filepath in graph.functions_by_file)
+
+
+# ---------------------------------------------------------------------------
+# get_dependency_graph (unparseable files)
+# ---------------------------------------------------------------------------
+
+
+def test_get_dependency_graph_file_level_ignores_unparseable_files(git_repo, caplog):
+    _build_sample_project(git_repo)
+    _write(Path(git_repo.working_tree_dir), "legacy_py2.py", _PY2_SOURCE)
+
+    with caplog.at_level(logging.WARNING, logger=deps_graph._logger.name):
+        graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert graph.dependents["mypkg/service.py"] == {
+        "mypkg/main.py",
+        "tests/test_app.py",
+    }
+    assert "legacy_py2.py" not in graph.dependents
+    assert "SyntaxError" in caplog.text
+
+
+def test_get_dependency_graph_ignores_repeatedly_unparseable_files(git_repo):
+    _build_sample_project(git_repo)
+    _unparseable_files(git_repo, 3)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert graph.dependents["mypkg/service.py"] == {
+        "mypkg/main.py",
+        "tests/test_app.py",
+    }
+    assert not any("legacy_" in filepath for filepath in graph.dependents)
+
+
+def test_get_dependency_graph_retries_without_the_offending_file(git_repo, monkeypatch):
+    root = Path(git_repo.working_tree_dir)
+    bad = _write(root, "bad.py", _PY2_SOURCE)
+    good = _write(root, "good.py", "x = 1\n")
+    received_file_lists = []
+
+    def _fake_build(python_files, working_dir):
+        received_file_lists.append(set(python_files))
+        if str(bad) in python_files:
+            raise SyntaxError("invalid syntax", (str(bad), 1, 1, str(bad)))
+        return DependencyGraph(dependents={"good.py": set()})
+
+    monkeypatch.setattr(deps_graph, "_build_file_dependency_graph", _fake_build)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert graph.dependents == {"good.py": set()}
+    assert received_file_lists == [{str(bad), str(good)}, {str(good)}]
+
+
+def test_get_dependency_graph_succeeds_when_skips_reach_the_limit(git_repo, monkeypatch):
+    _build_sample_project(git_repo)
+    _unparseable_files(git_repo, 2)
+    monkeypatch.setattr(deps_graph, "_MAX_SKIPPED_FILES", 2)
+
+    graph = get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+    assert graph.dependents["mypkg/service.py"] == {
+        "mypkg/main.py",
+        "tests/test_app.py",
+    }
+
+
+def test_get_dependency_graph_raises_when_skips_exceed_the_limit(git_repo, monkeypatch):
+    _build_sample_project(git_repo)
+    _unparseable_files(git_repo, 3)
+    monkeypatch.setattr(deps_graph, "_MAX_SKIPPED_FILES", 2)
+
+    with raises(RuntimeError, match="não puderam ser analisados"):
+        get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+
+@mark.parametrize(
+    "make_exc",
+    [
+        param(lambda: SyntaxError("no filename"), id="without-filename"),
+        param(
+            lambda: SyntaxError("invalid syntax", ("<unknown>", 1, 1, "<unknown>")),
+            id="filename-outside-the-file-list",
+        ),
+    ],
+)
+def test_get_dependency_graph_reraises_unattributable_syntax_error(
+    git_repo, monkeypatch, make_exc
+):
+    _build_sample_project(git_repo)
+    monkeypatch.setattr(
+        deps_graph, "_build_file_dependency_graph", _raiser(make_exc())
+    )
+
+    with raises(SyntaxError):
+        get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+
+def test_get_dependency_graph_propagates_other_errors(git_repo, monkeypatch):
+    _build_sample_project(git_repo)
+    monkeypatch.setattr(
+        deps_graph, "_build_file_dependency_graph", _raiser(ValueError("boom"))
+    )
+
+    with raises(ValueError, match="boom"):
+        get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
