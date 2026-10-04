@@ -250,7 +250,7 @@ def get_dependency_graph(
     # unparseable files (templates, python2 code, intentionally bug fixtures
     #  also crash pyan3 - this logic removes the offending
     # file and tries again, up to a limit of _MAX_SKIPPED_FILES
-    for _ in range(_MAX_SKIPPED_FILES):
+    for _ in range(_MAX_SKIPPED_FILES + 1):
         try:
             return build(python_files, working_dir)
         except SyntaxError as exc:
