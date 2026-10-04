@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.pytest_regsmart.reporter import pytest_terminal_summary
 from tests.fake_test_data import (
     test_a_method,
     test_b_class,
@@ -38,7 +37,7 @@ def test_logging(mytester):
     args = ["-v", "--regsmart"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=2, failed=1)
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 6
+    assert len([x for x in out.outlines if x.startswith(log_text)]) == 7
 
 
 def test_invalid_weight(mytester):
