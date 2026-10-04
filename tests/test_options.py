@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from tests.fake_test_data import (
     test_a_method,
     test_b_class,
@@ -25,6 +27,7 @@ def test_logging(mytester):
         "Using --ranking-seed",
         "Time to run the regression test prioritization (s)",
         "Time to collect test features (s)",
+        "Tests executed",
     )
 
     header = "= pytest-regsmart summary info ="
@@ -34,7 +37,7 @@ def test_logging(mytester):
     args = ["-v", "--regsmart"]
     out = mytester.runpytest(*args)
     out.assert_outcomes(passed=2, failed=1)
-    assert len([x for x in out.outlines if x.startswith(log_text)]) == 6
+    assert len([x for x in out.outlines if x.startswith(log_text)]) == 7
 
 
 def test_invalid_weight(mytester):
@@ -114,3 +117,89 @@ def test_summary_reports_used_branch(mytester):
         x.startswith("Default branch used for comparison:")
         for x in out.outlines
     )
+
+
+# ---------------------------------------------------------------------------
+# summary info: end-to-end counter
+# ---------------------------------------------------------------------------
+
+
+def test_summary_info_reports_tests_executed_count(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    out = mytester.runpytest("-v", "--regsmart")
+
+    out.assert_outcomes(passed=2, failed=1)
+    assert "Tests executed: 3" in out.outlines
+
+
+def test_summary_info_counter_absent_without_regsmart(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    out = mytester.runpytest("-v")
+
+    out.assert_outcomes(passed=2, failed=1)
+    assert not any("Tests executed" in x for x in out.outlines)
+
+
+def test_summary_info_counts_only_executed_tests(selection_project):
+    pytester, repo = selection_project
+    (Path(repo.working_tree_dir) / "service.py").write_text(
+        "def run():\n    return 42  # changed\n"
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=3)
+    assert "Tests executed: 3" in out.outlines
+    assert any("collected 4 items" in x for x in out.outlines)
+    assert not any("test_unrelated.py::" in x for x in out.outlines)
+
+
+def test_summary_info_excludes_skipped_tests(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+        test_skipped="""
+            import pytest
+
+            def test_skipped():
+                pytest.skip("not now")
+
+            def test_runs():
+                assert True
+            """,
+    )
+
+    out = mytester.runpytest("-v", "--regsmart")
+
+    out.assert_outcomes(passed=3, failed=1, skipped=1)
+    assert "Tests executed: 4" in out.outlines
+
+
+def test_summary_info_counter_present_with_no_rank(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    out = mytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=2, failed=1)
+    assert "Tests executed: 3" in out.outlines
+
+
+def test_summary_info_counter_when_single_test_collected(mytester):
+    mytester.makepyfile(
+        test_method_one=test_method_one,
+    )
+
+    out = mytester.runpytest("-v", "--regsmart", "test_method_one.py::test_medium")
+
+    out.assert_outcomes(passed=1)
+    assert any(
+        "RTS and RTP skipped: only 1 test was collected." in x for x in out.outlines
+    )
+    assert "Tests executed: 1" in out.outlines

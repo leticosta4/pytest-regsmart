@@ -15,7 +15,10 @@ from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 from ..utils import _find_py_files
 from .git_manager import resolve_repo
 
-#initially I'll try the simplest form using only files; functions are not needed yet
+_logger = logging.getLogger(__name__)
+
+_MAX_SKIPPED_FILES = 200  # teto de arquivos ignorados por SyntaxError antes de desistir
+
 #use the pyan3 API, not the CLI
 
 _KEPT_FLAVORS = {
@@ -216,15 +219,45 @@ def _build_function_dependency_graph(
     )
 
 
+def _readable_python_files(python_files: list[str]) -> list[str]:
+    """Discards every .py file unreadble by pyan3 - that only decodes uft-8"""
+    readable = []
+    for path in python_files:
+        try:
+            with open(path, encoding="utf-8") as f:
+                f.read()
+        except (UnicodeDecodeError, OSError) as exc:
+            _logger.warning("regsmart: ignoring %s at the dependency graph (%s)", path, type(exc).__name__)
+            continue
+        readable.append(path)
+    return readable
+
+
 def get_dependency_graph(
     repo_path: str = ".",
     graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
-    python_files = _find_py_files(working_dir)
+    python_files = _readable_python_files(_find_py_files(working_dir))
 
-    if graph_level == DIFF_LEVEL.FUNCTION:
-        return _build_function_dependency_graph(python_files, working_dir)
-    
-    return _build_file_dependency_graph(python_files, working_dir)
+    build = (
+        _build_function_dependency_graph
+        if graph_level == DIFF_LEVEL.FUNCTION
+        else _build_file_dependency_graph
+    )
+
+    # unparseable files (templates, python2 code, intentionally bug fixtures
+    #  also crash pyan3 - this logic removes the offending
+    # file and tries again, up to a limit of _MAX_SKIPPED_FILES
+    for _ in range(_MAX_SKIPPED_FILES + 1):
+        try:
+            return build(python_files, working_dir)
+        except SyntaxError as exc:
+            bad = os.path.normpath(exc.filename) if exc.filename else None
+            remaining = [f for f in python_files if os.path.normpath(f) != bad]
+            if bad is None or len(remaining) == len(python_files):
+                raise
+            _logger.warning("regsmart: ignorando %s no grafo de dependências (SyntaxError)", bad)
+            python_files = remaining
+    raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")

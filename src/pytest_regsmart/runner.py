@@ -38,7 +38,6 @@ class PluginRunner:  #pytest hooks
 
         selection = selector.run_rts(level=plugin.diff_level, log_dict=self.log)
         plugin.branch = selection.branch
-
  
         self._collect_selection_warnings(selection, plugin.no_rank)
  
@@ -100,6 +99,7 @@ class PluginRunner:  #pytest hooks
         extractor.compute_test_features(
             self.config, self.monitor.test_reports, self.plugin_config.hist_len, self.log,
         )
+        self.log["Tests executed"] = len(self.monitor.test_reports)
 
 
     def pytest_terminal_summary(
