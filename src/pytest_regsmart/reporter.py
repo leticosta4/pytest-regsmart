@@ -50,4 +50,7 @@ def pytest_terminal_summary(
     for w in warnings:
         tr._tw.line(f"WARNING: {w}")
     for k, v in log_dict.items():
-        tr._tw.line(f"{k}: {v*1000:.2f} ms ({v} s)")
+        if k in ("Tests selected by RTS", "Tests executed"):
+            tr._tw.line(f"{k}: {v}")
+        else:
+            tr._tw.line(f"{k}: {v*1000:.2f} ms ({v} s)")
