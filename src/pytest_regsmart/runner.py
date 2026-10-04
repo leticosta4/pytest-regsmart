@@ -38,8 +38,6 @@ class PluginRunner:  #pytest hooks
 
         selection = selector.run_rts(level=plugin.diff_level, log_dict=self.log)
         plugin.branch = selection.branch
-        self.log["Tests selected by RTS"] = len(selection.affected_tests)
-
  
         self._collect_selection_warnings(selection, plugin.no_rank)
  
