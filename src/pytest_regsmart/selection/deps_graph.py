@@ -247,9 +247,9 @@ def get_dependency_graph(
         else _build_file_dependency_graph
     )
 
-    # Arquivos que não parseiam (templates, código Python 2, fixtures com erro de
-    # sintaxe de propósito) também derrubam o pyan3: tira o arquivo apontado pelo
-    # erro e tenta de novo. Só paga o custo extra quando isso acontece.
+    # unparseable files (templates, python2 code, intentionally bug fixtures
+    #  also crash pyan3 - this logic removes the offending
+    # file and tries again, up to a limit of _MAX_SKIPPED_FILES
     for _ in range(_MAX_SKIPPED_FILES):
         try:
             return build(python_files, working_dir)
