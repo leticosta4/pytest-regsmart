@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.7.2] - 2026-10-04
+
+### Added
+- Add counters for actually executed tests in summary info (because only some are selected by RTS)
+- Add better handling for unreadable/unparsable files (not uft-8 encoding) that used to crash pyan3 graph generation
 ## [0.7.1] - 2026-09-17
 
 ### Changed
