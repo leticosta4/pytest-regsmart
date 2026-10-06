@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from git import Repo
+
 from tests.fake_test_data import test_method_one
 
 
@@ -40,6 +42,22 @@ def test_regsmart_requires_git_repo(pytester):
 
     assert any("--regsmart requires a git repository." in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
+
+
+def test_regsmart_detects_repo_from_subdirectory(mytester, monkeypatch):
+    repo = Repo(mytester.path)
+    sub = mytester.path / "sub"
+    sub.mkdir()
+    (sub / "test_sub.py").write_text("def test_ok():\n    assert True\n")
+    repo.index.add(["sub/test_sub.py"])
+    repo.index.commit("chore: add subdir test")
+
+    monkeypatch.chdir(sub)
+
+    out = mytester.runpytest("--regsmart")
+
+    assert not any("--regsmart requires a git repository." in x for x in out.errlines)
+    out.assert_outcomes(passed=1)
 
 
 def test_single_collected_test_skips_rts_and_rtp(selection_project):
