@@ -30,7 +30,7 @@ class DiffResult:
 
 
 def resolve_repo(repo_path: str = ".") -> Repo:
-    return Repo(repo_path)
+    return Repo(repo_path, search_parent_directories=True)
 
 
 def verify_git_repo(repo_path: str = ".") -> bool:

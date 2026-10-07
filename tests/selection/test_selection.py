@@ -3,19 +3,24 @@ from pathlib import Path
 
 import pytest
 
-from src.pytest_regsmart.const import DIFF_LEVEL
+from src.pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+from src.pytest_regsmart.selection import selector as selector_module
 from src.pytest_regsmart.selection.deps_graph import (
     DependencyGraph,
     FunctionMetadata,
 )
 from src.pytest_regsmart.selection.git_manager import DiffResult
 from src.pytest_regsmart.selection.selector import (
+    SELECTION_TIME_KEY,
+    SELECTION_TIME_KEY_FILE_LEVEL,
+    SelectionResult,
     _function_id_to_pytest_nodeid,
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
     filter_pytest_items_for_rtp,
     line_diff_match_function_ids,
     run_rts,
+    run_rts_with_fallback,
 )
 
 
@@ -436,3 +441,125 @@ def test_run_rts_non_python_only_diff_selects_nothing(git_repo, commit_file, mon
 
     assert result.has_diff is False
     assert result.affected_tests == []
+
+
+# ---------------------------------------------------------------------------
+# run_rts_with_fallback (function -> file cascade)
+# ---------------------------------------------------------------------------
+
+
+def _fake_rts(monkeypatch, results_by_level: dict[DIFF_LEVEL, SelectionResult]):
+    calls: list[tuple[DIFF_LEVEL, str]] = []
+
+    def fake(level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY):
+        calls.append((level, time_key))
+        if log_dict is not None:
+            log_dict[time_key] = 1.0
+        return results_by_level[level]
+
+    monkeypatch.setattr(selector_module, "run_rts", fake)
+    return calls
+
+
+def _result(level: DIFF_LEVEL, affected: list[str], **kwargs) -> SelectionResult:
+    return SelectionResult(
+        affected_tests=affected,
+        has_diff=True,
+        branch="main",
+        level=level,
+        **kwargs,
+    )
+
+
+def test_fallback_degrades_to_file_level_when_function_selection_is_empty(monkeypatch):
+    calls = _fake_rts(
+        monkeypatch,
+        {
+            DIFF_LEVEL.FUNCTION: _result(DIFF_LEVEL.FUNCTION, []),
+            DIFF_LEVEL.FILE: _result(DIFF_LEVEL.FILE, ["tests/test_core.py"]),
+        },
+    )
+    log_dict: dict = {}
+
+    result = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+
+    assert result.affected_tests == ["tests/test_core.py"]
+    assert result.level == DIFF_LEVEL.FILE
+    assert result.degraded_to_file is True
+    assert [level for level, _ in calls] == [DIFF_LEVEL.FUNCTION, DIFF_LEVEL.FILE]
+    assert calls[1][1] == SELECTION_TIME_KEY_FILE_LEVEL
+    assert SELECTION_TIME_KEY in log_dict
+    assert SELECTION_TIME_KEY_FILE_LEVEL in log_dict
+
+
+def test_fallback_with_both_levels_empty_returns_empty_result(monkeypatch):
+    _fake_rts(
+        monkeypatch,
+        {
+            DIFF_LEVEL.FUNCTION: _result(DIFF_LEVEL.FUNCTION, []),
+            DIFF_LEVEL.FILE: _result(DIFF_LEVEL.FILE, []),
+        },
+    )
+
+    result = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION)
+
+    assert result.affected_tests == []
+    assert result.degraded_to_file is True
+    assert result.level == DIFF_LEVEL.FILE
+
+
+def test_fallback_not_triggered_when_function_selection_finds_tests(monkeypatch):
+    calls = _fake_rts(
+        monkeypatch,
+        {DIFF_LEVEL.FUNCTION: _result(DIFF_LEVEL.FUNCTION, ["test_a.py::test_one"])},
+    )
+
+    result = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION)
+
+    assert result.affected_tests == ["test_a.py::test_one"]
+    assert result.level == DIFF_LEVEL.FUNCTION
+    assert result.degraded_to_file is False
+    assert [level for level, _ in calls] == [DIFF_LEVEL.FUNCTION]
+
+
+def test_fallback_not_triggered_when_level_is_file(monkeypatch):
+    calls = _fake_rts(monkeypatch, {DIFF_LEVEL.FILE: _result(DIFF_LEVEL.FILE, [])})
+
+    result = run_rts_with_fallback(level=DIFF_LEVEL.FILE)
+
+    assert result.affected_tests == []
+    assert result.degraded_to_file is False
+    assert [level for level, _ in calls] == [DIFF_LEVEL.FILE]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        SelectionResult(
+            affected_tests=[],
+            has_diff=True,
+            branch="main",
+            full_run=True,
+            level=DIFF_LEVEL.FUNCTION,
+        ),
+        SelectionResult(
+            affected_tests=[],
+            has_diff=True,
+            branch="main",
+            no_merge_base=True,
+            level=DIFF_LEVEL.FUNCTION,
+        ),
+        SelectionResult(
+            affected_tests=[], has_diff=False, branch="main", level=DIFF_LEVEL.FUNCTION
+        ),
+    ],
+    ids=["full_run", "no_merge_base", "no_diff"],
+)
+def test_fallback_not_triggered_for_safe_degradation_guards(monkeypatch, result):
+    calls = _fake_rts(monkeypatch, {DIFF_LEVEL.FUNCTION: result})
+
+    returned = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION)
+
+    assert returned is result
+    assert returned.degraded_to_file is False
+    assert [level for level, _ in calls] == [DIFF_LEVEL.FUNCTION]

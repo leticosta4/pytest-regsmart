@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.7.3] - 2026-10-06
+
+### Added
+- Cascade for empty selections: when function-level selection finds no affected tests while a diff exists, fall back to file-level selection (summary reports the fallback and its own selection time); if that is also empty, run the full suite with an explicit warning instead of degrading silently.
+### Fixed
+- Pass the effective selection level (not only the configured `--diff-level`) to the item filter, so degraded (function → file) selections filter by file.
+- Restore the collected items when the selection matches none of them (nodeid mismatch), instead of exiting with "no tests ran".
+- Detect the git repository when pytest runs from a subdirectory of the repo (e.g. CI with `working-directory: tests/...`), using `search_parent_directories=True` in the repo resolution instead of only looking for a `.git` in the invocation cwd.
+### Security
+- Bump GitPython from version 3.1.58 to 3.2.0 ([CVE-2026-87817](https://www.tenable.com/cve/CVE-2026-87817))
 ## [0.7.2] - 2026-10-04
 
 ### Added

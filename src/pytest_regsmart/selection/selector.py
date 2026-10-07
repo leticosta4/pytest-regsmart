@@ -10,6 +10,9 @@ from ..utils import _filter_python_files, _is_conftest, _is_test_file
 from .deps_graph import DependencyGraph, get_dependency_graph
 from .git_manager import DiffResult, get_git_diff
 
+SELECTION_TIME_KEY = "Time to run the regression test selection (s)"
+SELECTION_TIME_KEY_FILE_LEVEL = "Time to run the file-level regression test selection (s)"
+
 
 @dataclass
 class SelectionResult:
@@ -18,6 +21,8 @@ class SelectionResult:
     branch: str
     full_run: bool = False
     no_merge_base: bool = False
+    level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL
+    degraded_to_file: bool = False
 
 
 def line_diff_match_function_ids(
@@ -139,7 +144,11 @@ def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_leve
     )
 
 
-def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None) -> SelectionResult:
+def run_rts(
+    level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    log_dict: dict | None = None,
+    time_key: str = SELECTION_TIME_KEY,
+) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
 
@@ -155,13 +164,15 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
             has_diff=has_diff,
             branch=used_branch,
             no_merge_base=True,
+            level=level,
         )
 
     if not has_diff:
         return SelectionResult(
             affected_tests=[],
             has_diff=has_diff,
-            branch=used_branch
+            branch=used_branch,
+            level=level,
         )
 
     changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
@@ -170,7 +181,8 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
             affected_tests=[],
             has_diff=has_diff,
             branch=used_branch,
-            full_run=True
+            full_run=True,
+            level=level,
         )
     
     deps_graph = get_dependency_graph(graph_level= level)
@@ -182,10 +194,45 @@ def run_rts(level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL, log_dict: dict | None = None
     )
 
     if log_dict is not None:
-        log_dict["Time to run the regression test selection (s)"] = time.time() - start_time
+        log_dict[time_key] = time.time() - start_time
 
     return SelectionResult(
         affected_tests=selected,
         has_diff=has_diff,
-        branch=used_branch
+        branch=used_branch,
+        level=level,
     )
+
+
+def _should_degrade_to_file(result: SelectionResult, level: DIFF_LEVEL) -> bool:
+    return (
+        level == DIFF_LEVEL.FUNCTION
+        and not result.affected_tests
+        and result.has_diff
+        and not result.full_run
+        and not result.no_merge_base
+    )
+
+
+def run_rts_with_fallback(
+    level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    log_dict: dict | None = None,
+) -> SelectionResult:
+    """Run RTS and, on a suspicious empty function-level result, retry at file level.
+
+    A function-level selection that finds nothing while a diff exists is often a
+    false negative (e.g. tests calling names reexported in ``__init__.py``), so
+    the file-level selection is used as a safer, less precise fallback.
+    """
+    result = run_rts(level=level, log_dict=log_dict)
+
+    if not _should_degrade_to_file(result, level):
+        return result
+
+    fallback = run_rts(
+        level=DIFF_LEVEL.FILE,
+        log_dict=log_dict,
+        time_key=SELECTION_TIME_KEY_FILE_LEVEL,
+    )
+    fallback.degraded_to_file = True
+    return fallback

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from git import Repo
+
 from tests.fake_test_data import test_method_one
 
 
@@ -40,6 +42,22 @@ def test_regsmart_requires_git_repo(pytester):
 
     assert any("--regsmart requires a git repository." in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
+
+
+def test_regsmart_detects_repo_from_subdirectory(mytester, monkeypatch):
+    repo = Repo(mytester.path)
+    sub = mytester.path / "sub"
+    sub.mkdir()
+    (sub / "test_sub.py").write_text("def test_ok():\n    assert True\n")
+    repo.index.add(["sub/test_sub.py"])
+    repo.index.commit("chore: add subdir test")
+
+    monkeypatch.chdir(sub)
+
+    out = mytester.runpytest("--regsmart")
+
+    assert not any("--regsmart requires a git repository." in x for x in out.errlines)
+    out.assert_outcomes(passed=1)
 
 
 def test_single_collected_test_skips_rts_and_rtp(selection_project):
@@ -429,3 +447,63 @@ def test_detached_head_without_base_raises_clean_usage_error(selection_project):
 
     assert any("main/master was not found" in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
+
+
+# ---------------------------------------------------------------------------
+# selection cascade (function -> file -> full suite) + observability
+# ---------------------------------------------------------------------------
+
+def test_empty_selection_warning_for_empty_test_module_diff(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "orphan.py", "def orphan():\n    return 1\n")
+    _change(repo, "orphan.py", "def orphan():\n    return 2  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "Diff detected but no affected tests found at file level: running the full suite."
+        in x
+        for x in out.outlines
+    )
+
+
+def test_function_level_empty_falls_back_to_file_level(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "const_mod.py", "VALUE = 1\n")
+    _commit_new_file(
+        repo,
+        "test_const.py",
+        "from const_mod import VALUE\n"
+        "\n"
+        "def test_value():\n"
+        "    assert VALUE == 1\n",
+    )
+    # module-level constant: no function node in the graph -> empty function selection
+    _change(repo, "const_mod.py", "VALUE = 1  # touched\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=1)
+    assert _ran_files(out) == ["test_const.py"]
+    assert any(
+        "Function-level selection found no affected tests; falling back to "
+        "file-level selection (1 test file(s))." in x
+        for x in out.outlines
+    )
+
+
+def test_explicit_file_level_does_not_degrade(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "orphan.py", "def orphan():\n    return 1\n")
+    _change(repo, "orphan.py", "def orphan():\n    return 2  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank", "--diff-level=file")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "Diff detected but no affected tests found at file level: running the full suite."
+        in x
+        for x in out.outlines
+    )
+    assert not any("falling back to file-level selection" in x for x in out.outlines)
