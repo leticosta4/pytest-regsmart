@@ -36,13 +36,26 @@ class PluginRunner:  #pytest hooks
             )
             return
 
-        selection = selector.run_rts(level=plugin.diff_level, log_dict=self.log)
+        selection = selector.run_rts_with_fallback(
+            level=plugin.diff_level, log_dict=self.log
+        )
         plugin.branch = selection.branch
  
         self._collect_selection_warnings(selection, plugin.no_rank)
  
         if selection.affected_tests:
-            selector.filter_pytest_items_for_rtp(items, set(selection.affected_tests), plugin.diff_level)
+            unfiltered = list(items)
+            selector.filter_pytest_items_for_rtp(
+                items, set(selection.affected_tests), selection.level
+            )
+            if not items:
+                items[:] = unfiltered
+                self.warnings.append(
+                    "Selected tests matched no collected test (nodeid mismatch): "
+                    "the full suite will run."
+                )
+
+        self.log["Tests selected by RTS"] = len(items)
  
         if not plugin.no_rank:
             if len(items) > 1:
@@ -85,6 +98,18 @@ class PluginRunner:  #pytest hooks
                 self.warnings.append(
                     "conftest.py changed and --no-rank enabled: pytest-regsmart is not doing anything."
                 )
+
+        elif not selection.affected_tests:
+            self.warnings.append(
+                "Diff detected but no affected tests found at file level: "
+                "running the full suite."
+            )
+
+        if selection.degraded_to_file:
+            self.warnings.append(
+                "Function-level selection found no affected tests; falling back to "
+                f"file-level selection ({len(selection.affected_tests)} test file(s))."
+            )
 
  
     def pytest_runtest_logreport(self, report: TestReport) -> None:

@@ -447,3 +447,76 @@ def test_detached_head_without_base_raises_clean_usage_error(selection_project):
 
     assert any("main/master was not found" in x for x in out.errlines)
     assert not any("::" in x and "PASSED" in x for x in out.outlines)
+
+
+# ---------------------------------------------------------------------------
+# selection cascade (function -> file -> full suite) + observability
+# ---------------------------------------------------------------------------
+
+
+def test_summary_shows_tests_selected_by_rts(selection_project):
+    pytester, repo = selection_project
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=3)
+    assert any("Tests selected by RTS: 3" in x for x in out.outlines)
+
+
+def test_empty_selection_warning_for_empty_test_module_diff(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "orphan.py", "def orphan():\n    return 1\n")
+    _change(repo, "orphan.py", "def orphan():\n    return 2  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "Diff detected but no affected tests found at file level: running the full suite."
+        in x
+        for x in out.outlines
+    )
+    assert any("Tests selected by RTS: 4" in x for x in out.outlines)
+
+
+def test_function_level_empty_falls_back_to_file_level(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "const_mod.py", "VALUE = 1\n")
+    _commit_new_file(
+        repo,
+        "test_const.py",
+        "from const_mod import VALUE\n"
+        "\n"
+        "def test_value():\n"
+        "    assert VALUE == 1\n",
+    )
+    # module-level constant: no function node in the graph -> empty function selection
+    _change(repo, "const_mod.py", "VALUE = 1  # touched\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=1)
+    assert _ran_files(out) == ["test_const.py"]
+    assert any(
+        "Function-level selection found no affected tests; falling back to "
+        "file-level selection (1 test file(s))." in x
+        for x in out.outlines
+    )
+    assert any("Tests selected by RTS: 1" in x for x in out.outlines)
+
+
+def test_explicit_file_level_does_not_degrade(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "orphan.py", "def orphan():\n    return 1\n")
+    _change(repo, "orphan.py", "def orphan():\n    return 2  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank", "--diff-level=file")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "Diff detected but no affected tests found at file level: running the full suite."
+        in x
+        for x in out.outlines
+    )
+    assert not any("falling back to file-level selection" in x for x in out.outlines)
