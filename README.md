@@ -3,7 +3,7 @@
 A Pytest plugin that implements Regression Test Selection (RTS) and Regression Test Prioritization (RTP) for faster regression fault detection.
 
 This [pytest](https://github.com/pytest-dev/pytest) plugin allows you to find regression test failures faster and receive testing feedback sooner from CI build.
-When enabled with `--regsmart`, it first **selects** only the test files affected by the changes since the last baseline (RTS), then **prioritizes** them so that the tests that are faster or recently failed run earlier (RTP).
+When enabled with `--regsmart`, it first **selects** only the tests affected by the changes since the last baseline (RTS), then **prioritizes** them so that the tests that are faster or recently failed run earlier (RTP).
 
 ## Installation
 
@@ -42,17 +42,19 @@ Using --ranking-seed=123
 Using --ranking-replay=None
 ```
 
-After the test run finishes, the terminal summary will show the overhead of `pytest-regsmart` in this run, for example:
+After the test run finishes, the terminal summary reports how many tests the selection kept, together with the overhead of `pytest-regsmart` in this run, for example:
 
 ```
-=================================== pytest-regsmart summary info ====================================
+=================================== pytest-regsmart summary info ===================================
 Default branch used for comparison: origin/main
-Time to run the regression test selection (s): 0.0003604120544433594
-Time to run the regression test prioritization (s): 0.0004608631134033203
-Time to collect test features (s): 0.0004608631134033203
-Tests executed: 557
+Time to run the regression test selection (s): 12.50 ms (0.0125 s)
+Tests selected by RTS: 84
+Time to run the regression test prioritization (s): 2.50 ms (0.0025 s)
+Time to collect test features (s): 0.63 ms (0.000625 s)
+Tests executed: 84
 ```
 
+`Tests selected by RTS` is the number of tests kept by the selection (before prioritization), while `Tests executed` is the final count reported by pytest. When selection is skipped or the whole suite runs because of it, the summary also prints the reason as a line starting with `WARNING:` (see [How Regression Test Selection (RTS) works](#how-regression-test-selection-rts-works)).
 
 ### Disabling ranking (RTP)
 
@@ -84,6 +86,12 @@ pytest --regsmart --diff-level=file
 - `file`: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary.
 
 This option can also be configured via the `diff_level` ini option (see [Setting configurable options via config file](#setting-configurable-options-via-config-file)).
+
+Because the `function` level depends on the call graph, it can occasionally come back empty even though a diff exists (for example when tests reach the changed code only through names the graph does not link, such as reexports in `__init__.py`). An empty selection never degrades silently to the full suite: `pytest-regsmart` warns and falls back to the coarser — but safe — `file` level. This cascade only starts from the `function` level: with an explicit `--diff-level=file`, an empty selection goes straight to the full-suite warning.
+
+```
+WARNING: Function-level selection found no affected tests; falling back to file-level selection (1 test file(s)).
+```
 
 ### Optimizing test prioritization heuristics
 
@@ -187,7 +195,7 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
 
 2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
 3. **Propagate changes transitively.** A BFS traversal starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
-4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed.
+4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed. As a safety net, if the filter would remove *every* collected test (a nodeid mismatch between the graph and pytest's collection), the original list is restored and a warning is reported, instead of pytest exiting with "no tests ran".
 
 If there is no diff since the baseline, `pytest-regsmart` skips both dependency-graph generation and test selection, reports a warning, and runs the full test suite. RTP still runs unless `--no-rank` is set; with both no diff and `--no-rank`, the plugin reports that it has no work to do.
 
@@ -195,6 +203,11 @@ Two additional edge cases also cause selection to be skipped (the full suite run
 
 - **`conftest.py` changed.** Because `conftest.py` can alter collection and fixture behaviour globally, any change to it disables test selection for that run — the full suite executes instead.
 - **No shared history with the base branch.** If the base branch (`main`/`master`) is resolved but has no merge-base with the current HEAD (e.g. unrelated histories), selection is skipped with a warning.
+
+A fourth case is different: a diff exists and the graph is built, but the selection comes back empty. That never happens silently:
+
+- at the `function` level (the default), the selection is retried at the `file` level, and the summary reports `WARNING: Function-level selection found no affected tests; falling back to file-level selection (N test file(s)).`;
+- if the `file` level also finds nothing — or was requested explicitly with `--diff-level=file` — the summary reports `WARNING: Diff detected but no affected tests found at file level: running the full suite.` and the full suite runs.
 
 Because selection granularity follows `--diff-level`, the default `function` level narrows the selection down to the affected test functions, while `file` selects whole files and is therefore intentionally conservative: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary. See [Choosing the diff granularity](#choosing-the-diff-granularity).
 
@@ -211,9 +224,9 @@ RTP is skipped whenever there is nothing to reorder, independently of which rank
 
 See [Usage](#usage) for all available options.
 
-## Deployment (wip)
+## Deployment
 
-`pytest-regsmart` is easy to deploy into CI workflow, please see [deployment](./DEPLOYMENT.md).
+`pytest-regsmart` is easy to deploy into a CI workflow; see [Deployment](./DEPLOYMENT.md).
 
 ## Local development
 
