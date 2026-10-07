@@ -42,19 +42,18 @@ Using --ranking-seed=123
 Using --ranking-replay=None
 ```
 
-After the test run finishes, the terminal summary reports how many tests the selection kept, together with the overhead of `pytest-regsmart` in this run, for example:
+After the test run finishes, the terminal summary reports the number of tests actually executed (selection and prioritization included), together with the overhead of `pytest-regsmart` in this run, for example:
 
 ```
 =================================== pytest-regsmart summary info ===================================
 Default branch used for comparison: origin/main
 Time to run the regression test selection (s): 12.50 ms (0.0125 s)
-Tests selected by RTS: 84
 Time to run the regression test prioritization (s): 2.50 ms (0.0025 s)
 Time to collect test features (s): 0.63 ms (0.000625 s)
 Tests executed: 84
 ```
 
-`Tests selected by RTS` is the number of tests kept by the selection (before prioritization), while `Tests executed` is the final count reported by pytest. When selection is skipped or the whole suite runs because of it, the summary also prints the reason as a line starting with `WARNING:` (see [How Regression Test Selection (RTS) works](#how-regression-test-selection-rts-works)).
+`Tests executed` is the final count reported by pytest. When selection is skipped or the whole suite runs because of it, the summary also prints the reason as a line starting with `WARNING:` (see [How Regression Test Selection (RTS) works](#how-regression-test-selection-rts-works)).
 
 ### Disabling ranking (RTP)
 

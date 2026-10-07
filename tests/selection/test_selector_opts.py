@@ -453,17 +453,6 @@ def test_detached_head_without_base_raises_clean_usage_error(selection_project):
 # selection cascade (function -> file -> full suite) + observability
 # ---------------------------------------------------------------------------
 
-
-def test_summary_shows_tests_selected_by_rts(selection_project):
-    pytester, repo = selection_project
-    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
-
-    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
-
-    out.assert_outcomes(passed=3)
-    assert any("Tests selected by RTS: 3" in x for x in out.outlines)
-
-
 def test_empty_selection_warning_for_empty_test_module_diff(selection_project):
     pytester, repo = selection_project
     _commit_new_file(repo, "orphan.py", "def orphan():\n    return 1\n")
@@ -477,7 +466,6 @@ def test_empty_selection_warning_for_empty_test_module_diff(selection_project):
         in x
         for x in out.outlines
     )
-    assert any("Tests selected by RTS: 4" in x for x in out.outlines)
 
 
 def test_function_level_empty_falls_back_to_file_level(selection_project):
@@ -503,7 +491,6 @@ def test_function_level_empty_falls_back_to_file_level(selection_project):
         "file-level selection (1 test file(s))." in x
         for x in out.outlines
     )
-    assert any("Tests selected by RTS: 1" in x for x in out.outlines)
 
 
 def test_explicit_file_level_does_not_degrade(selection_project):

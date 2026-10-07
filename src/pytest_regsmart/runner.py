@@ -54,8 +54,6 @@ class PluginRunner:  #pytest hooks
                     "Selected tests matched no collected test (nodeid mismatch): "
                     "the full suite will run."
                 )
-
-        self.log["Tests selected by RTS"] = len(items)
  
         if not plugin.no_rank:
             if len(items) > 1:

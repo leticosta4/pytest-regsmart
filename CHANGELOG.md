@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Cascade for empty selections: when function-level selection finds no affected tests while a diff exists, fall back to file-level selection (summary reports the fallback and its own selection time); if that is also empty, run the full suite with an explicit warning instead of degrading silently.
-- Restore the `Tests selected by RTS` counter in the summary info, so CI logs show how many tests the selection actually kept.
 ### Fixed
 - Pass the effective selection level (not only the configured `--diff-level`) to the item filter, so degraded (function → file) selections filter by file.
 - Restore the collected items when the selection matches none of them (nodeid mismatch), instead of exiting with "no tests ran".
