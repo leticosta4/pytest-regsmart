@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.7.4] - 2026-10-13
+
+### Fixed
+- README now describes the transitive propagation as depth-first (LIFO stack); it previously said BFS
 ## [0.7.3] - 2026-10-08
 
 ### Added
