@@ -192,7 +192,7 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
    - the diff is the working tree vs the merge-base with that base, so every commit on a PR/branch is compared against `main`/`master`, not against itself;
    - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
 
-2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
+2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, `.pixi`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
 3. **Propagate changes transitively.** A depth-first traversal (DFS, implemented with a LIFO stack) starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
 4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed. As a safety net, if the filter would remove *every* collected test (a nodeid mismatch between the graph and pytest's collection), the original list is restored and a warning is reported, instead of pytest exiting with "no tests ran".
 
@@ -217,7 +217,7 @@ After selection, `pytest-regsmart` reorders the remaining tests so that failures
 - **Faster tests first**, based on their recorded execution durations from previous runs;
 - **Recently failed tests first**, based on how many runs have passed since each test's last failure.
 
-Weights are set with `--ranking-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). Tests carrying an `order` or `dependency` marker always run first, in their declared order.
+Weights are set with `--ranking-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). 
 
 RTP is skipped whenever there is nothing to reorder, independently of which ranking flags are in use. If the selection leaves a single test, the prioritization step is skipped and the summary reports `RTP skipped: only 1 test was selected, nothing to reorder.` When pytest itself collects exactly one test (e.g. a single node id passed on the command line or a `-k` filter matching one test), both RTS and RTP are skipped entirely, and the summary reports `RTS and RTP skipped: only 1 test was collected.`
 
@@ -262,9 +262,7 @@ tox -- -k "test_name"
 ## Compatibility
 
 `pytest-regsmart` works with [_pytest_ test filtering](https://docs.pytest.org/en/6.2.x/usage.html#specifying-tests-selecting-tests) and [parallelization](https://pypi.org/project/pytest-xdist).
-It also works with plugins for ordering tests, e.g., [pytest-order](https://pypi.org/project/pytest-order), [pytest-dependency](https://pypi.org/project/pytest-dependency) by
-running ordered tests first in their declared order.
-Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.org/en/stable/how-to/cache.html#usage)), or plugins that randomly order tests (e.g., [pytest-randomly](https://github.com/pytest-dev/pytest-randomly), [pytest-random-order](https://github.com/pytest-dev/pytest-random-order), [pytest-reverse](https://github.com/adamchainz/pytest-reverse)), can interfere with `pytest-regsmart` as they use the same reordering hook.
+It also works with plugins for ordering tests, e.g., [pytest-order](https://pypi.org/project/pytest-order), [pytest-dependency](https://pypi.org/project/pytest-dependency) by running ordered tests first in their declared order. Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.org/en/stable/how-to/cache.html#usage)), or plugins that randomly order tests (e.g., [pytest-randomly](https://github.com/pytest-dev/pytest-randomly), [pytest-random-order](https://github.com/pytest-dev/pytest-random-order), [pytest-reverse](https://github.com/adamchainz/pytest-reverse)), can interfere with `pytest-regsmart` as they use the same reordering hook.
 
 `pytest-regsmart` supports Python 3.10+.
 
