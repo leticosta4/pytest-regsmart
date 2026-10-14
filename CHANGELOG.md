@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.4] - 2026-10-13
 
 ### Fixed
+- Ignore `.pixi` environment directories when discovering Python files for the dependency graph; pixi keeps the whole stdlib inside the repo tree and `pyan3` used to crash on `poplib.py` (a method literally named `top` collides with pyan3's module-root sentinel), aborting the whole run.
 - README now describes the transitive propagation as depth-first (LIFO stack); it previously said BFS
 ## [0.7.3] - 2026-10-08
 
