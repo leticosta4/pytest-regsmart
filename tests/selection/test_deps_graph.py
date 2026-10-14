@@ -80,6 +80,7 @@ def test_find_py_files_excludes_env_and_build_dirs(tmp_path):
     _write(tmp_path, "dist/bundle.py")
     _write(tmp_path, "build/gen.py")
     _write(tmp_path, "pkg.egg-info/PKG-INFO.py")
+    _write(tmp_path, ".pixi/envs/py312/lib/python3.12/poplib.py")
 
     files = _find_py_files(str(tmp_path))
 
