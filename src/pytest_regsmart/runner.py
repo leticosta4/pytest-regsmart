@@ -9,6 +9,7 @@ from _pytest.terminal import TerminalReporter
  
 from . import reporter as reporter_mod
 from .config import PluginConfig
+from .const import DIFF_SOURCE
 from .monitor import Monitor
 from .ranking import extractor, ranker
 from .selection import selector
@@ -37,11 +38,13 @@ class PluginRunner:  #pytest hooks
             return
 
         selection = selector.run_rts_with_fallback(
-            level=plugin.diff_level, log_dict=self.log
+            level=plugin.diff_level,
+            log_dict=self.log,
+            diff_source=plugin.diff_source,
         )
         plugin.branch = selection.branch
  
-        self._collect_selection_warnings(selection, plugin.no_rank)
+        self._collect_selection_warnings(selection, plugin.no_rank, plugin.diff_source)
  
         if selection.affected_tests:
             unfiltered = list(items)
@@ -68,7 +71,7 @@ class PluginRunner:  #pytest hooks
                 )
 
 
-    def _collect_selection_warnings(self, selection, no_rank: bool) -> None:
+    def _collect_selection_warnings(self, selection, no_rank: bool, diff_source) -> None:
         """warning messages according to RTS resullt"""
         if selection.no_merge_base:
             self.warnings.append(
@@ -78,9 +81,15 @@ class PluginRunner:  #pytest hooks
             )
 
         elif not selection.has_diff:
+            hint = (
+                " Only committed changes are compared; commit your changes or pass "
+                "--local-diff to select from the working tree."
+                if diff_source == DIFF_SOURCE.COMMIT
+                else ""
+            )
             self.warnings.append(
-                "No diff detected in Python files: regression test selection was skipped. The value set "
-                "for '--diff-level' was ignored."
+                "No diff detected in Python files: regression test selection was skipped."
+                f"{hint} The value set for '--diff-level' was ignored."
             )
             if no_rank:
                 self.warnings.append(

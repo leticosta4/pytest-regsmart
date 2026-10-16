@@ -13,7 +13,8 @@ from .selection import selection_args
 class PluginConfig:
     """Estado imutável derivado das options do pytest — separado da lógica dos hooks."""
  
-    diff_level: Any  # DIFF_LEVEL — ajuste o tipo se quiser importar de .const
+    diff_level: Any  # DIFF_LEVEL
+    diff_source: Any  # DIFF_SOURCE
     no_rank: bool
     weights: Any
     level: Any
@@ -26,6 +27,7 @@ class PluginConfig:
     def from_pytest_config(cls, config: Config) -> PluginConfig:
         return cls(
             diff_level=selection_args.parse_diff_level(config),
+            diff_source=selection_args.parse_diff_source(config),
             no_rank=rank_args.parse_no_rank(config),
             weights=rank_args.parse_rtp_weights(config),
             level=rank_args.parse_rtp_level(config),

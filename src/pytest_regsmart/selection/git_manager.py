@@ -9,10 +9,12 @@ from git import Repo
 from git.exc import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
 
 from pytest_regsmart.const import (
-    DEFAULT_BRANCH_CANDIDATES,
+    BASE_BRANCH_CANDIDATES,
     DEFAULT_DIFF_LEVEL,
+    DEFAULT_DIFF_SOURCE,
     DIFF_HUNK_HEADER,
     DIFF_LEVEL,
+    DIFF_SOURCE,
 )
 
 LineRange: TypeAlias = tuple[int, int]
@@ -41,17 +43,20 @@ def verify_git_repo(repo_path: str = ".") -> bool:
         return False
 
 
-def resolve_base_ref(repo: Repo) -> str | None:
-    """A git-resolvable ref to the default branch (main/master):
-    first the local branch, then the remote-tracking (origin/main) -- which
-    is what is left after actions/checkout with fetch-depth: 0 on any event."""
-    for branch in DEFAULT_BRANCH_CANDIDATES:
-        for ref in (branch, f"origin/{branch}"):
-            try:
-                repo.commit(ref)
-            except (BadName, GitCommandError):
-                continue
-            return ref  # "main" local ou "origin/main"
+def resolve_base_ref(repo: Repo, diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE) -> str | None:
+    """Resolve a git ref to the default branch (main/master), or None.
+
+    Candidates are tried in the order given by the diff source: reading the
+    committed diff, the remote-tracking refs come first (``origin/main`` is what
+    ``actions/checkout`` with ``fetch-depth: 0`` leaves on a GitHub Actions PR
+    or push, matching the diff GitHub computes); reading the working tree, the
+    local branch comes first, since it may be ahead with unpushed commits."""
+    for ref in BASE_BRANCH_CANDIDATES[diff_source]:
+        try:
+            repo.commit(ref)
+        except (BadName, GitCommandError):
+            continue
+        return ref  # "main" local ou "origin/main"
     return None
 
 
@@ -64,6 +69,14 @@ def _is_deleted(repo: Repo, merge_base_hash: str, path: str) -> bool:
         return True
     except GitCommandError:
         return False
+
+
+def _deleted_between(repo: Repo, merge_base_hash: str, head_hash: str) -> list[str]:
+    """Files removed by the commits between the merge base and HEAD."""
+    raw_diff = repo.git.diff(
+        merge_base_hash, head_hash, name_only=True, diff_filter="D"
+    )
+    return raw_diff.splitlines()
 
 
 def parse_diff_output(raw_diff: str) -> ChangedLineRanges:
@@ -96,9 +109,20 @@ def parse_diff_output(raw_diff: str) -> ChangedLineRanges:
     return changed_line_ranges
 
 
-def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL) -> DiffResult:
+def get_git_diff(
+    repo_path: str = ".",
+    diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+) -> DiffResult:
+    """Changed files (and their line ranges) used for test selection.
+
+    ``DIFF_SOURCE.COMMIT`` compares the merge base against HEAD, so only
+    committed changes count and build steps that rewrite files on disk (CI
+    install/test setup) cannot leak into the selection. ``DIFF_SOURCE.WORKTREE``
+    compares the merge base against the working tree and adds untracked files,
+    which is what a developer editing locally expects."""
     repo = resolve_repo(repo_path=repo_path)
-    untracked_diff = repo.untracked_files
+    untracked_diff = repo.untracked_files if diff_source == DIFF_SOURCE.WORKTREE else []
 
     if not repo.head.is_valid(): #repo has no commits yet (just git init); only check the untracked diff
         return DiffResult(
@@ -107,7 +131,7 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
             used_branch=""
         )
 
-    base_ref = resolve_base_ref(repo) #maybe make this configurable via a flag later
+    base_ref = resolve_base_ref(repo, diff_source) #maybe make this configurable via a flag later
     if base_ref is None:
         raise pytest.UsageError(
             "main/master was not found (neither local nor origin/main). "
@@ -127,22 +151,29 @@ def get_git_diff(repo_path: str = ".", diff_level: DIFF_LEVEL = DEFAULT_DIFF_LEV
             no_merge_base=True,
         )
 
-    working_dir_diff = repo.git.diff(merge_base_commit, name_only=True).splitlines()
-    deleted_files = [path for path in working_dir_diff if _is_deleted(repo, merge_base_commit.hexsha, path)]
+    if diff_source == DIFF_SOURCE.COMMIT:
+        head_hash = repo.head.commit.hexsha
+        diff_args = (merge_base_commit.hexsha, head_hash)
+        modified_files = repo.git.diff(*diff_args, name_only=True).splitlines()
+        deleted_files = _deleted_between(repo, merge_base_commit.hexsha, head_hash)
+    else:
+        diff_args = (merge_base_commit.hexsha,)
+        modified_files = repo.git.diff(merge_base_commit, name_only=True).splitlines()
+        deleted_files = [path for path in modified_files if _is_deleted(repo, merge_base_commit.hexsha, path)]
 
     if diff_level == DIFF_LEVEL.FUNCTION:
-        raw_diff = repo.git.diff(merge_base_commit, unified=0)
-            
+        raw_diff = repo.git.diff(*diff_args, unified=0)
+
         return DiffResult(
-                    modified_files=working_dir_diff,
+                    modified_files=modified_files,
                     untracked_files=untracked_diff,
                     deleted_files=deleted_files,
                     used_branch=base_ref,
                     changed_line_ranges=parse_diff_output(raw_diff)
             )
-    
+
     return DiffResult(
-        modified_files=working_dir_diff,
+        modified_files=modified_files,
         untracked_files=untracked_diff,
         deleted_files=deleted_files,
         used_branch=base_ref
