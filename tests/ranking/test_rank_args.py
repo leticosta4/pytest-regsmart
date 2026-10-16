@@ -1,6 +1,6 @@
 import pytest
 
-from src.pytest_regsmart.const import RANK_LEVEL
+from src.pytest_regsmart.const import DEFAULT_WEIGHT, RANK_LEVEL
 from src.pytest_regsmart.ranking.rank_args import (
     parse_hist_len,
     parse_no_rank,
@@ -26,14 +26,14 @@ class _FakeConfig:
 @pytest.mark.parametrize(
     ("option", "ini", "expected"),
     [
-        pytest.param("0-1", "1-0", [0, 1], id="cli value wins over ini"),
+        pytest.param("1-0", "0.4-0.2", [1, 0], id="cli value wins over ini"),
         pytest.param(
-            "1-0",
+            DEFAULT_WEIGHT,
             "0.4-0.2",
             pytest.approx([0.4 / 0.6, 0.2 / 0.6]),
             id="ini used when cli has default",
         ),
-        pytest.param("1-0", None, [1, 0], id="default when ini unset"),
+        pytest.param(DEFAULT_WEIGHT, None, [0, 1], id="default when ini unset"),
         pytest.param("0-0", None, [0, 0], id="zero sum returns zeros"),
     ],
 )
@@ -143,8 +143,8 @@ def test_parse_no_rank(option, ini, expected):
 @pytest.mark.parametrize(
     ("parse_fn", "option", "ini", "match"),
     [
-        pytest.param(parse_rtp_weights, "1-0", "1-3-2", "ranking_weight", id="weight too many parts"),
-        pytest.param(parse_rtp_weights, "1-0", "x-y", "ranking_weight", id="weight non numeric parts"),
+        pytest.param(parse_rtp_weights, DEFAULT_WEIGHT, "1-3-2", "ranking_weight", id="weight too many parts"),
+        pytest.param(parse_rtp_weights, DEFAULT_WEIGHT, "x-y", "ranking_weight", id="weight non numeric parts"),
         pytest.param(parse_rtp_level, RANK_LEVEL.PUT, "class", "ranking_level", id="level unknown value"),
         pytest.param(parse_hist_len, 50, "abc", "ranking_hist_len", id="hist len not an integer"),
         pytest.param(parse_seed, 0, "not-a-number", "ranking_seed", id="seed not an integer"),

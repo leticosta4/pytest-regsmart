@@ -53,7 +53,7 @@ Before the test run starts, if `--regsmart` is passed, the terminal header will 
 Starting Smart Regression Test Management (RTS + RTP)
 Using --diff-level=function
 Diff source: committed changes (default)
-Using --ranking-weight=1-0
+Using --ranking-weight=0-1
 Using --ranking-level=put
 Using --ranking-hist-len=50
 Using --ranking-seed=123
@@ -125,7 +125,7 @@ pytest --regsmart --ranking-weight=0-1
 - All weights must be integers or floats, and their sum will be normalized to 1
 - A higher weight means that a corresponding heuristic is favored.
 
-The default value is ``1-0``, which only prioritizes faster tests.
+The default value is ``0-1``, which only prioritizes faster tests.
 
 ### Optimizing test prioritization levels
 
@@ -184,7 +184,7 @@ For example, create `pytest.ini` in your codebase root folder as such:
 
 ```ini
 [pytest]
-addopts = --regsmart --ranking-weight=0-1 --ranking-hist-len=30
+addopts = --regsmart --ranking-weight=1-0 --ranking-hist-len=30
 ```
 
 and run `pytest` on the command line.
@@ -237,7 +237,7 @@ After selection, `pytest-regsmart` reorders the remaining tests so that failures
 - **Faster tests first**, based on their recorded execution durations from previous runs;
 - **Recently failed tests first**, based on how many runs have passed since each test's last failure.
 
-Weights are set with `--ranking-weight`, normalized to sum 1 (default `1-0`, speed only), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). 
+Weights are set with `--ranking-weight`, normalized to sum 1 (default `0-1`, recent failures), and scores are aggregated per group according to `--ranking-level` (`put`, `function`, or `module`). Two special modes replace these heuristics: replaying a fixed order listed in a text file (`--ranking-replay`) and random order (`--ranking-weight=0-0`, seeded by `--ranking-seed`). 
 
 RTP is skipped whenever there is nothing to reorder, independently of which ranking flags are in use. If the selection leaves a single test, the prioritization step is skipped and the summary reports `RTP skipped: only 1 test was selected, nothing to reorder.` When pytest itself collects exactly one test (e.g. a single node id passed on the command line or a `-k` filter matching one test), both RTS and RTP are skipped entirely, and the summary reports `RTS and RTP skipped: only 1 test was collected.`
 

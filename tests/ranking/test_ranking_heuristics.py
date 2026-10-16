@@ -24,12 +24,12 @@ def test_default(mytester):
     out.assert_outcomes(passed=4, failed=2)
     out.stdout.fnmatch_lines(
         [
+            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
             "test_method_one.py::test_fast_fail FAILED",
             "test_class_one.py::TestClassSample::test_fast PASSED",
-            "test_method_one.py::test_medium PASSED",
             "test_class_one.py::TestClassSample::test_medium PASSED",
             "test_method_one.py::test_slow PASSED",
-            "test_class_one.py::TestClassSample::test_slow_fail FAILED",
+            "test_method_one.py::test_medium PASSED",
         ],
         consecutive=True
     )
