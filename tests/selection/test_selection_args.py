@@ -1,23 +1,25 @@
 import argparse
+from typing import Any
 
 import pytest
 
-from src.pytest_regsmart.const import DIFF_LEVEL
+from src.pytest_regsmart.const import DIFF_LEVEL, DIFF_SOURCE
 from src.pytest_regsmart.selection.selection_args import (
     level_type,
     parse_diff_level,
+    parse_diff_source,
 )
 
 
 class _FakeConfig:
-    def __init__(self, option: DIFF_LEVEL, ini: str = ""):
+    def __init__(self, option: Any, ini: Any = ""):
         self._option = option
         self._ini = ini
 
-    def getoption(self, _name: str) -> DIFF_LEVEL:
+    def getoption(self, _name: str) -> Any:
         return self._option
 
-    def getini(self, _name: str) -> str:
+    def getini(self, _name: str) -> Any:
         return self._ini
 
 
@@ -54,3 +56,27 @@ def test_parse_diff_level_invalid_ini_value_raises_usage_error():
 
     with pytest.raises(pytest.UsageError, match="diff_level"):
         parse_diff_level(config)
+
+
+def test_parse_diff_source_defaults_to_committed():
+    config = _FakeConfig(option=False, ini=False)
+
+    assert parse_diff_source(config) is DIFF_SOURCE.COMMIT
+
+
+def test_parse_diff_source_cli_flag_reads_local_changes():
+    config = _FakeConfig(option=True, ini=False)
+
+    assert parse_diff_source(config) is DIFF_SOURCE.WORKTREE
+
+
+def test_parse_diff_source_ini_reads_local_changes():
+    config = _FakeConfig(option=False, ini=True)
+
+    assert parse_diff_source(config) is DIFF_SOURCE.WORKTREE
+
+
+def test_parse_diff_source_cli_flag_wins_over_ini():
+    config = _FakeConfig(option=True, ini=True)
+
+    assert parse_diff_source(config) is DIFF_SOURCE.WORKTREE

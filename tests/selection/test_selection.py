@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+from src.pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL, DIFF_SOURCE
 from src.pytest_regsmart.selection import selector as selector_module
 from src.pytest_regsmart.selection.deps_graph import (
     DependencyGraph,
@@ -22,6 +22,10 @@ from src.pytest_regsmart.selection.selector import (
     run_rts,
     run_rts_with_fallback,
 )
+
+
+WORKTREE = DIFF_SOURCE.WORKTREE
+COMMIT = DIFF_SOURCE.COMMIT
 
 
 def test_get_affected_tests_reaches_indirect_test_files_dependents():
@@ -256,20 +260,54 @@ def _commit_sample_project(git_repo, commit_file):
     git_repo.git.branch("-m", "main")
 
 
+def _edit_worktree(git_repo, filename: str, content: str) -> None:
+    Path(git_repo.working_tree_dir, filename).write_text(content)
+
+
 def test_run_rts_function_level_returns_full_nodeids(
     git_repo, commit_file, monkeypatch
 ):
     _commit_sample_project(git_repo, commit_file)
-    Path(git_repo.working_tree_dir, "service.py").write_text(
-        "def run():\n    return 0\n"
-    )
+    _edit_worktree(git_repo, "service.py", "def run():\n    return 0\n")
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(DIFF_LEVEL.FUNCTION)
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
 
     assert result.affected_tests == ["test_app.py::test_run"]
     assert result.has_diff is True
     assert result.branch == "main"
+
+
+def test_run_rts_commit_source_selects_committed_change(
+    git_repo, commit_file, monkeypatch
+):
+    _commit_sample_project(git_repo, commit_file)
+    git_repo.git.checkout("-b", "feature")
+    _edit_worktree(git_repo, "service.py", "def run():\n    return 0\n")
+    git_repo.index.add("service.py")
+    git_repo.index.commit("mutate service")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=COMMIT)
+
+    assert result.affected_tests == ["test_app.py::test_run"]
+    assert result.has_diff is True
+    assert result.branch == "main"
+
+
+def test_run_rts_commit_source_ignores_worktree_conftest(
+    git_repo, commit_file, monkeypatch
+):
+    _commit_sample_project(git_repo, commit_file)
+    _edit_worktree(git_repo, "service.py", "def run():\n    return 0\n")
+    _write_untracked(git_repo, "conftest.py", "# rewritten by CI\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=COMMIT)
+
+    assert result.full_run is False
+    assert result.has_diff is False
+    assert result.affected_tests == []
 
 
 def test_run_rts_without_diff_selects_nothing(git_repo, commit_file, monkeypatch):
@@ -307,7 +345,7 @@ def test_run_rts_conftest_untracked_triggers_full_run(git_repo, commit_file, mon
     _write_untracked(git_repo, "conftest.py", "# shared fixtures\n")
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is True
     assert result.affected_tests == []
@@ -326,7 +364,7 @@ def test_run_rts_conftest_untracked_with_modified_file_triggers_full_run(
     _write_untracked(git_repo, "conftest.py", "# shared fixtures\n")
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is True
     assert result.affected_tests == []
@@ -342,7 +380,7 @@ def test_run_rts_conftest_tracked_modified_triggers_full_run(
     )
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is True
     assert result.affected_tests == []
@@ -356,7 +394,7 @@ def test_run_rts_conftest_tracked_deleted_triggers_full_run(
     os.remove(Path(git_repo.working_tree_dir, "conftest.py"))
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is True
     assert result.affected_tests == []
@@ -370,7 +408,7 @@ def test_run_rts_conftest_in_subdirectory_untracked_triggers_full_run(
     _write_untracked(git_repo, "tests/conftest.py", "# shared fixtures\n")
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is True
     assert result.affected_tests == []
@@ -390,7 +428,7 @@ def test_run_rts_without_conftest_selects_normally(git_repo, commit_file, monkey
     )
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(level)
+    result = run_rts(level, diff_source=WORKTREE)
 
     assert result.full_run is False
     assert result.affected_tests == expected
@@ -402,7 +440,7 @@ def test_run_rts_conftest_does_not_log_selection_time(git_repo, commit_file, mon
     monkeypatch.chdir(git_repo.working_tree_dir)
     log_dict: dict = {}
 
-    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict, diff_source=WORKTREE)
 
     assert "Time to run the regression test selection (s)" not in log_dict
 
@@ -412,7 +450,7 @@ def test_run_rts_without_diff_does_not_log_selection_time(git_repo, commit_file,
     monkeypatch.chdir(git_repo.working_tree_dir)
     log_dict: dict = {}
 
-    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict, diff_source=WORKTREE)
 
     assert "Time to run the regression test selection (s)" not in log_dict
 
@@ -425,7 +463,7 @@ def test_run_rts_logs_selection_time_when_selecting(git_repo, commit_file, monke
     monkeypatch.chdir(git_repo.working_tree_dir)
     log_dict: dict = {}
 
-    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict)
+    run_rts(DIFF_LEVEL.FUNCTION, log_dict=log_dict, diff_source=WORKTREE)
 
     assert "Time to run the regression test selection (s)" in log_dict
 
@@ -451,7 +489,9 @@ def test_run_rts_non_python_only_diff_selects_nothing(git_repo, commit_file, mon
 def _fake_rts(monkeypatch, results_by_level: dict[DIFF_LEVEL, SelectionResult]):
     calls: list[tuple[DIFF_LEVEL, str]] = []
 
-    def fake(level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY):
+    def fake(
+        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None
+    ):
         calls.append((level, time_key))
         if log_dict is not None:
             log_dict[time_key] = 1.0
@@ -563,3 +603,20 @@ def test_fallback_not_triggered_for_safe_degradation_guards(monkeypatch, result)
     assert returned is result
     assert returned.degraded_to_file is False
     assert [level for level, _ in calls] == [DIFF_LEVEL.FUNCTION]
+
+
+def test_fallback_forwards_diff_source_to_selection(monkeypatch):
+    """The diff source must reach the real selection, including on the fallback."""
+    seen: list = []
+
+    def fake(
+        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None
+    ):
+        seen.append(diff_source)
+        return _result(level, ["test_a.py::test_one"])
+
+    monkeypatch.setattr(selector_module, "run_rts", fake)
+
+    run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
+
+    assert seen == [WORKTREE]
