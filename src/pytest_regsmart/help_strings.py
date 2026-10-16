@@ -10,7 +10,7 @@ Set weights on different prioritization heuristics,
 separated by hyphens `-`.
 The sum of weights will be normalized to 1.
 Higher weight means that heuristic will be favored.
-Default value is 1-0.
+Default value is 0-1.
 """)
 
 HIST_LEN_HELP = textwrap.dedent("""\
