@@ -28,13 +28,31 @@ pytest --regsmart
 
 Note that `--regsmart` requires the project to be a `git` repository (the regression test selection is computed from the changes since the base branch). Running it outside a git repo raises a `UsageError`.
 
-The **base branch must be resolvable in the local clone** for the diff to be computed. `pytest-regsmart` always compares the current branch against the repository's default branch — `main`, or `master` if that is its name — resolved first as a local branch and then as the `origin/main` (or `origin/master`) remote-tracking ref. On a shallow clone (e.g. `actions/checkout` with the default `fetch-depth: 1`), the base branch is not fetched, so it cannot be resolved — `pytest-regsmart` raises a `UsageError` telling you what to fix instead of silently running the whole suite. In CI, fetch the full history (see [Deployment](./DEPLOYMENT.md)).
+The **base branch must be resolvable in the local clone** for the diff to be computed. `pytest-regsmart` always compares the current branch against the repository's default branch — `main`, or `master` if that is its name — never against the currently checked-out branch. The candidate refs are tried according to the **diff source** (see below): in the committed mode the remote-tracking `origin/main`/`origin/master` comes first — which is what a full checkout (`fetch-depth: 0` in `actions/checkout`) leaves available on a GitHub Actions PR or push — and the local branch is the fallback; in the local mode the local branch comes first, since it may be ahead with unpushed commits. On a shallow clone (e.g. `actions/checkout` with the default `fetch-depth: 1`), the base branch is not fetched, so it cannot be resolved — `pytest-regsmart` raises a `UsageError` telling you what to fix instead of silently running the whole suite. In CI, fetch the full history (see [Deployment](./DEPLOYMENT.md)).
+
+### Choosing the diff source (committed vs local)
+
+By default, `pytest-regsmart` selects tests from the **committed** changes: the diff between the merge-base with the base branch and `HEAD`. That is what CI checks out, so build steps that rewrite files on disk before pytest runs (rewriting imports, removing `src/`, generating files) do not leak into the selection and cannot accidentally force the full suite. Untracked files are ignored in this mode.
+
+To select from the **local, uncommitted** changes — the working tree plus untracked files, what you expect while developing — use the `--local-diff` boolean flag, or set `local_diff = true` in `pytest.ini`:
+
+```bash
+pytest --regsmart --local-diff
+```
+
+```ini
+[pytest]
+local_diff = true
+```
+
+The mode in use is reported in the terminal header: `Diff source: committed changes (default)` or `Diff source: local changes (--local-diff)`.
 
 Before the test run starts, if `--regsmart` is passed, the terminal header will report `pytest-regsmart`'s configuration of this run, for example:
 
 ```
 Starting Smart Regression Test Management (RTS + RTP)
 Using --diff-level=function
+Diff source: committed changes (default)
 Using --ranking-weight=1-0
 Using --ranking-level=put
 Using --ranking-hist-len=50
@@ -69,6 +87,7 @@ With `--no-rank`, the header instead reports:
 ```
 Starting RTS (Regression Test Selection)
 Using --no-rank (RTP disabled).
+Diff source: committed changes (default)
 ```
 
 Note that `--no-rank` **cannot be combined with other `--ranking-*` flags**: passing any of them together raises a `UsageError`. It only disables the prioritization step; the regression test selection still applies.
@@ -175,6 +194,7 @@ Alternatively, you can set values directly as ini options (without `addopts`) an
 ```ini
 [pytest]
 diff_level = function
+local_diff = false
 no_rank = false
 ranking_weight = 1-0
 ranking_replay =
@@ -187,10 +207,10 @@ ranking_seed = 0
 
 When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection step before the tests are executed:
 
-1. **Compute the changed files.** It uses git to inspect the working tree against the **base** branch — the repository's default branch (`main`, or `master` if that is how it is named), never the currently checked-out branch:
-   - the base is resolved first as a local `main`/`master` and then as the remote-tracking `origin/main`/`origin/master` — which is what a full checkout (`fetch-depth: 0` in `actions/checkout`) leaves available on a GitHub Actions PR or push;
-   - the diff is the working tree vs the merge-base with that base, so every commit on a PR/branch is compared against `main`/`master`, not against itself;
-   - it collects both modified (`staged` + `unstaged`) and untracked files. If the repository has no commits yet, only untracked files are considered.
+1. **Compute the changed files.** It uses git to inspect the repository against the **base** branch — the repository's default branch (`main`, or `master` if that is how it is named), never the currently checked-out branch:
+   - the base is resolved according to the diff source: in the committed mode (default) it prefers the remote-tracking `origin/main`/`origin/master` — what a full checkout (`fetch-depth: 0` in `actions/checkout`) leaves available on a GitHub Actions PR or push — and falls back to the local branch; in the local mode (`--local-diff`) it prefers the local branch and falls back to the remote-tracking ref;
+   - the diff is the merge-base with that base, so every commit on a PR/branch is compared against `main`/`master`, not against itself;
+   - by default (committed mode) it collects the files changed between the merge-base and `HEAD` and ignores untracked files; with `--local-diff` it collects modified (`staged` + `unstaged`) and untracked files from the working tree instead. If the repository has no commits yet, only untracked files are considered.
 
 2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, `.pixi`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
 3. **Propagate changes transitively.** A depth-first traversal (DFS, implemented with a LIFO stack) starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
@@ -200,7 +220,7 @@ If there is no diff since the baseline, `pytest-regsmart` skips both dependency-
 
 Two additional edge cases also cause selection to be skipped (the full suite runs):
 
-- **`conftest.py` changed.** Because `conftest.py` can alter collection and fixture behaviour globally, any change to it disables test selection for that run — the full suite executes instead.
+- **`conftest.py` changed.** Because `conftest.py` can alter collection and fixture behaviour globally, any change to it disables test selection for that run — the full suite executes instead. In the committed mode (default) only a committed change counts, so a `conftest.py` rewritten only in the working tree (e.g. by a CI step) does not disable selection.
 - **No shared history with the base branch.** If the base branch (`main`/`master`) is resolved but has no merge-base with the current HEAD (e.g. unrelated histories), selection is skipped with a warning.
 
 A fourth case is different: a diff exists and the graph is built, but the selection comes back empty. That never happens silently:

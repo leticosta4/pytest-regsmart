@@ -3,7 +3,9 @@ from __future__ import annotations
 from _pytest.config import Config
 from _pytest.terminal import TerminalReporter
 
+from .const import DIFF_SOURCE
 from .ranking.rank_args import parse_no_rank
+from .selection.selection_args import parse_diff_source
 
 
 def pytest_report_header(config: Config) -> str | None:
@@ -16,6 +18,7 @@ def pytest_report_header(config: Config) -> str | None:
         return [
             "\nStarting RTS (Regression Test Selection)",
             "Using --no-rank (RTP disabled).",
+            f"Diff source: {_diff_source_label(config)}",
         ]
 
     diff_level = config.getoption("--diff-level")
@@ -28,12 +31,19 @@ def pytest_report_header(config: Config) -> str | None:
         "\nStarting Smart Regression Test Management (RTS + RTP)",
     ] + [
         f"Using --diff-level={diff_level}",
+        f"Diff source: {_diff_source_label(config)}",
         f"Using --ranking-weight={weight}",
         f"Using --ranking-level={ranking_level}",
         f"Using --ranking-hist-len={hist_len}",
         f"Using --ranking-seed={random_seed}",
         f"Using --ranking-replay={replay}",
     ]
+
+
+def _diff_source_label(config: Config) -> str:
+    if parse_diff_source(config) == DIFF_SOURCE.WORKTREE:
+        return "local changes (--local-diff)"
+    return "committed changes (default)"
 
 
 def pytest_terminal_summary(

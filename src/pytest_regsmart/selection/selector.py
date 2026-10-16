@@ -4,7 +4,12 @@ import os
 import time
 from dataclasses import dataclass
 
-from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
+from pytest_regsmart.const import (
+    DEFAULT_DIFF_LEVEL,
+    DEFAULT_DIFF_SOURCE,
+    DIFF_LEVEL,
+    DIFF_SOURCE,
+)
 
 from ..utils import _filter_python_files, _is_conftest, _is_test_file
 from .deps_graph import DependencyGraph, get_dependency_graph
@@ -148,11 +153,12 @@ def run_rts(
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     log_dict: dict | None = None,
     time_key: str = SELECTION_TIME_KEY,
+    diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
 ) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
 
-    diff_result = get_git_diff(diff_level=level)
+    diff_result = get_git_diff(diff_level=level, diff_source=diff_source)
     diff_result.modified_files = _filter_python_files(diff_result.modified_files)
     diff_result.untracked_files = _filter_python_files(diff_result.untracked_files)
     has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
@@ -217,6 +223,7 @@ def _should_degrade_to_file(result: SelectionResult, level: DIFF_LEVEL) -> bool:
 def run_rts_with_fallback(
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     log_dict: dict | None = None,
+    diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
 ) -> SelectionResult:
     """Run RTS and, on a suspicious empty function-level result, retry at file level.
 
@@ -224,7 +231,7 @@ def run_rts_with_fallback(
     false negative (e.g. tests calling names reexported in ``__init__.py``), so
     the file-level selection is used as a safer, less precise fallback.
     """
-    result = run_rts(level=level, log_dict=log_dict)
+    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source)
 
     if not _should_degrade_to_file(result, level):
         return result
@@ -233,6 +240,7 @@ def run_rts_with_fallback(
         level=DIFF_LEVEL.FILE,
         log_dict=log_dict,
         time_key=SELECTION_TIME_KEY_FILE_LEVEL,
+        diff_source=diff_source,
     )
     fallback.degraded_to_file = True
     return fallback

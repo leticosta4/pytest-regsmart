@@ -40,6 +40,22 @@ class DIFF_LEVEL(str, Enum):
 
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FUNCTION
 
+class DIFF_SOURCE(str, Enum):
+    COMMIT = "commit"        #for CI envs - compares the merge base with HEAD
+    WORKTREE = "worktree"    #for local envs - compares the merge base with the working tree and includes untracked files
+
+    def __str__(self) -> str:
+        return self.value
+
+
+DEFAULT_DIFF_SOURCE = DIFF_SOURCE.COMMIT
+
 DIFF_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 DEFAULT_BRANCH_CANDIDATES = ("main", "master")
+COMMIT_BRANCH_CANDIDATES = ("origin/main", "origin/master", "main", "master")
+
+BASE_BRANCH_CANDIDATES: dict[DIFF_SOURCE, tuple[str, ...]] = {
+    DIFF_SOURCE.COMMIT: COMMIT_BRANCH_CANDIDATES,
+    DIFF_SOURCE.WORKTREE: DEFAULT_BRANCH_CANDIDATES,
+}

@@ -29,10 +29,32 @@ def _change(repo, filename: str, content: str) -> None:
     (Path(repo.working_tree_dir) / filename).write_text(content)
 
 
+def _commit_change(repo, filename: str, content: str, message: str = "change") -> None:
+    _change(repo, filename, content)
+    repo.index.add([filename])
+    repo.index.commit(message)
+
+
 def _commit_new_file(repo, filename: str, content: str) -> None:
     (Path(repo.working_tree_dir) / filename).write_text(content)
     repo.index.add([filename])
     repo.index.commit(f"Add {filename}")
+
+
+def _local_diff_ini(repo, **options) -> None:
+    """Rewrite pytest.ini keeping ``local_diff`` on (the fixture default)."""
+    (Path(repo.working_tree_dir) / "pytest.ini").write_text(
+        "[pytest]\nconsole_output_style = classic\nlocal_diff = true\n"
+        + "".join(f"{key} = {value}\n" for key, value in options.items())
+    )
+
+
+def _committed_ini(repo, **options) -> None:
+    """Rewrite pytest.ini without ``local_diff``, exercising the committed default."""
+    (Path(repo.working_tree_dir) / "pytest.ini").write_text(
+        "[pytest]\nconsole_output_style = classic\n"
+        + "".join(f"{key} = {value}\n" for key, value in options.items())
+    )
 
 
 def test_regsmart_requires_git_repo(pytester):
@@ -239,7 +261,7 @@ def test_diff_level_ini_option_used_when_cli_absent(selection_project):
         'def alpha():\n    return "a"\n\n\ndef beta():\n    return "b"  # touched\n',
     )
     (Path(repo.working_tree_dir) / "pytest.ini").write_text(
-        "[pytest]\nconsole_output_style = classic\ndiff_level = file\n"
+        "[pytest]\nconsole_output_style = classic\nlocal_diff = true\ndiff_level = file\n"
     )
 
     out = pytester.runpytest("-v", "--regsmart", "--no-rank")
@@ -507,3 +529,69 @@ def test_explicit_file_level_does_not_degrade(selection_project):
         for x in out.outlines
     )
     assert not any("falling back to file-level selection" in x for x in out.outlines)
+
+
+# ---------------------------------------------------------------------------
+# committed diff (default) vs local diff (--local-diff / local_diff = true)
+# ---------------------------------------------------------------------------
+
+
+def test_committed_change_is_selected_by_default(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(repo, "extra.py", "def alpha():\n    return 1\n")
+    _commit_new_file(
+        repo,
+        "test_extra.py",
+        "from extra import alpha\n\n\ndef test_alpha():\n    assert alpha()\n",
+    )
+    repo.git.checkout("-b", "feature")
+    _commit_change(repo, "extra.py", "def alpha():\n    return 2\n", "change extra")
+    _committed_ini(repo)
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=1)
+    assert _ran_files(out) == ["test_extra.py"]
+    assert any("Diff source: committed changes (default)" in x for x in out.outlines)
+
+
+def test_uncommitted_changes_are_ignored_by_default(selection_project):
+    """Worktree-only noise must not reach the selection: a tracked module
+    rewritten in place (like CI's import rewriting) nor an untracked conftest.py."""
+    pytester, repo = selection_project
+    _committed_ini(repo)
+    _change(repo, "service.py", "def run():\n    return 42  # rewritten\n")
+    (Path(repo.working_tree_dir) / "conftest.py").write_text("# untracked\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=4)
+    assert any(
+        "No diff detected in Python files: regression test selection was skipped." in x
+        for x in out.outlines
+    )
+    assert any("--local-diff" in x for x in out.outlines)
+    assert not any("conftest.py changed" in x for x in out.outlines)
+
+
+def test_local_diff_flag_reads_worktree_changes(selection_project):
+    pytester, repo = selection_project
+    _committed_ini(repo)
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank", "--local-diff")
+
+    out.assert_outcomes(passed=3)
+    assert _ran_files(out) == ["test_other.py", "test_service.py"]
+    assert any("Diff source: local changes (--local-diff)" in x for x in out.outlines)
+
+
+def test_local_diff_ini_option_reads_worktree_changes(selection_project):
+    pytester, repo = selection_project
+    _local_diff_ini(repo)
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=3)
+    assert _ran_files(out) == ["test_other.py", "test_service.py"]

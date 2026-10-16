@@ -56,6 +56,9 @@ def selection_project(pytester):
 
     Tests real selection: the test changes `service.py`
     (production) to produce a diff and select only the dependent tests cases.
+    The generated ``pytest.ini`` enables ``local_diff`` because these tests edit
+    files without committing them; tests covering the committed default (and the
+    ``--local-diff`` flag) rewrite that ini.
     Returns (project Path, Repo).
     """
     pytester.makefile(
@@ -63,6 +66,7 @@ def selection_project(pytester):
         pytest="""
             [pytest]
             console_output_style = classic
+            local_diff = true
             """,
     )
     repo = Repo.init(pytester.path)
