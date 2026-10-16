@@ -15,6 +15,7 @@ from .const import (
 from .help_strings import (
     DIFF_LEVEL_HELP,
     HIST_LEN_HELP,
+    LOCAL_DIFF_HELP,
     NO_RANK_HELP,
     PLUGIN_HELP,
     RANK_LEVEL_HELP,
@@ -41,6 +42,12 @@ def add_options(parser: Parser) -> None:
         default=DEFAULT_DIFF_LEVEL,
         dest="diff_level",
         help=DIFF_LEVEL_HELP)
+
+    group._addoption(
+        "--local-diff",
+        action="store_true",
+        default=False,
+        help=LOCAL_DIFF_HELP)
  
     group._addoption(
         "--no-rank",
@@ -91,6 +98,7 @@ def add_options(parser: Parser) -> None:
  
 def add_ini_options(parser: Parser) -> None:
     parser.addini("diff_level", DIFF_LEVEL_HELP, default=DEFAULT_DIFF_LEVEL.value)
+    parser.addini("local_diff", LOCAL_DIFF_HELP, type="bool", default=False)
     parser.addini("no_rank", NO_RANK_HELP, type="bool", default=False)
     parser.addini("ranking_weight", WEIGHT_HELP, default=DEFAULT_WEIGHT)
     parser.addini("ranking_replay", REPLAY_HELP, default=DEFAULT_REPLAY)

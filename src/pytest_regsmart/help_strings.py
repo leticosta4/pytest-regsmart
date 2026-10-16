@@ -47,3 +47,10 @@ DIFF_LEVEL_HELP = textwrap.dedent("""
 The levels at which the diff will be identified using Git and the level for the dependency graph.
 Possible values are: file and function (default).
 """)
+
+LOCAL_DIFF_HELP = textwrap.dedent("""
+Boolean flag to select tests from the local, uncommitted changes instead of the committed diff.
+By default the diff is the changes committed between the merge base and HEAD (what CI checks out),
+so build steps that rewrite files on disk do not leak into the selection.
+Use this flag, or `local_diff = true` in pytest.ini, when running locally on changes you have not committed yet.
+""")
