@@ -23,7 +23,6 @@ from src.pytest_regsmart.selection.selector import (
     run_rts_with_fallback,
 )
 
-
 WORKTREE = DIFF_SOURCE.WORKTREE
 COMMIT = DIFF_SOURCE.COMMIT
 
