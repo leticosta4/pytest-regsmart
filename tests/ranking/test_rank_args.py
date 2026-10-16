@@ -26,7 +26,7 @@ class _FakeConfig:
 @pytest.mark.parametrize(
     ("option", "ini", "expected"),
     [
-        pytest.param("0-1", "1-0", [0, 1], id="cli value wins over ini"),
+        pytest.param("1-0", "0-1", [0, 1], id="cli value wins over ini"),
         pytest.param(
             "1-0",
             "0.4-0.2",
