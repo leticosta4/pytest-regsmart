@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import ast
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import TypeAlias
 
 from pyan.analyzer import CallGraphVisitor
 from pyan.modvis import ImportVisitor
@@ -15,82 +12,23 @@ from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
 from .git_manager import resolve_repo
+from .models import (
+    _KEPT_FLAVORS,
+    DependenciesMap,
+    DependencyGraph,
+    DependentsMap,
+    FunctionMetadata,
+    FunctionNodes,
+    FunctionsByFile,
+    ModuleToPath,
+    _ModuleQualifiedCallGraphVisitor,
+)
 
 _logger = logging.getLogger(__name__)
 
-_MAX_SKIPPED_FILES = 200  # teto de arquivos ignorados por SyntaxError antes de desistir
-
 #use the pyan3 API, not the CLI
 
-_KEPT_FLAVORS = {
-    Flavor.FUNCTION,
-    Flavor.METHOD,
-    Flavor.CLASSMETHOD,
-    Flavor.STATICMETHOD,
-    Flavor.CLASS,
-}  #only functions, methods and classes on the fucntion callgraph (classes because of internal methods that can be desconsidered in git diff)
-
-
-@dataclass(frozen=True, slots=True)
-class FunctionMetadata:
-    filepath: str
-    start_line: int
-    end_line: int
-
-
-NodeId: TypeAlias = str #file or function level according to diff-level
-DependenciesMap: TypeAlias = dict[NodeId, set[NodeId]]  # node -> who it depends on
-DependentsMap: TypeAlias = dict[NodeId, set[NodeId]]    # node -> who depends on it
-FunctionNodes: TypeAlias = dict[str, FunctionMetadata]
-FunctionsByFile: TypeAlias = dict[str, set[str]]
-ModuleToPath: TypeAlias = dict[str, str]
-
-
-@dataclass
-class DependencyGraph:
-    dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
-    function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
-    functions_by_file: FunctionsByFile = field(default_factory=dict)
-
-
-class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
-    """CallGraphVisitor with a narrow fallback for qualified module calls.
-
-    pyan already resolves the imported root name in the current scope. Keep
-    the remaining attribute path while the original Call AST is being visited,
-    so lazy package attributes can be matched to a known function node later.
-    """
-
-    def __init__(self, *args, **kwargs):
-        self.module_qualified_calls: set[tuple[str, str]] = set()
-        super().__init__(*args, **kwargs)
-
-    def visit_Call(self, node: ast.Call):
-        target = node.func
-        attributes: list[str] = []
-        while isinstance(target, ast.Attribute):
-            attributes.append(target.attr)
-            target = target.value
-
-        if isinstance(target, ast.Name) and attributes:
-            root_name = target.id
-            scope = self.scope_stack[-1]
-            root_value = self.get_value(root_name)
-
-            # Do not use a module import if the call's scope binds that name to
-            # a local value (for example, a parameter named ``librosa``).
-            if (
-                root_name not in scope.locals
-                and root_value is not None
-                and root_value.flavor == Flavor.MODULE
-            ):
-                caller = self.get_node_of_current_namespace().get_name()
-                qualified_target = ".".join(
-                    [root_value.get_name(), *reversed(attributes)]
-                )
-                self.module_qualified_calls.add((caller, qualified_target))
-
-        return super().visit_Call(node)
+_MAX_SKIPPED_FILES = 200  # teto de arquivos ignorados por SyntaxError antes de desistir
 
     
 def _normalize_pyan_module_name(module_name: str) -> str:

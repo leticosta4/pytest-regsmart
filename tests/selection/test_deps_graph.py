@@ -10,8 +10,6 @@ from pytest import mark, param, raises
 from pytest_regsmart.const import DIFF_LEVEL
 from src.pytest_regsmart.selection import deps_graph
 from src.pytest_regsmart.selection.deps_graph import (
-    DependencyGraph,
-    FunctionMetadata,
     _build_function_dependency_graph,
     _build_import_name_to_path,
     _convert_module_to_relative_path,
@@ -20,6 +18,10 @@ from src.pytest_regsmart.selection.deps_graph import (
     _invert_dependency_map,
     _readable_python_files,
     get_dependency_graph,
+)
+from src.pytest_regsmart.selection.models import (
+    DependencyGraph,
+    FunctionMetadata,
 )
 
 _LATIN1_BYTES = b"# -*- coding: latin-1 -*-\nNAME = 'caf\xe9'\n"

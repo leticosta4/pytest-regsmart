@@ -1,6 +1,8 @@
 import re
 from enum import Enum
 
+from .selection.models import DIFF_LEVEL, DIFF_SOURCE
+
 # ------ Constants ------
 
 DATA_DIR = "pytest_ranked_selection_data"
@@ -29,24 +31,7 @@ class RANK_LEVEL(str, Enum):
 
 DEFAULT_RANK_LEVEL = RANK_LEVEL.PUT
 
-
-class DIFF_LEVEL(str, Enum):
-    """The level at which the diff is identified."""
-    FUNCTION = "function"
-    FILE = "file"
-
-    def __str__(self) -> str:
-        return self.value
-
 DEFAULT_DIFF_LEVEL = DIFF_LEVEL.FUNCTION
-
-class DIFF_SOURCE(str, Enum):
-    COMMIT = "commit"        #for CI envs - compares the merge base with HEAD
-    WORKTREE = "worktree"    #for local envs - compares the merge base with the working tree and includes untracked files
-
-    def __str__(self) -> str:
-        return self.value
-
 
 DEFAULT_DIFF_SOURCE = DIFF_SOURCE.COMMIT
 
