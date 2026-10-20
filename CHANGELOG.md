@@ -8,19 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.8.1] - 2026-10-20
+
+### Fixed
+- Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16
 
 ### Added
 - `--local-diff` flag (and ini option) to select tests from the local, uncommitted changes (working tree and untracked files). The header now reports the diff source in use (`Diff source: committed changes (default)` / `Diff source: local changes (--local-diff)`).
-
 ### Changed
 - Regression test selection now reads the **committed** diff by default (`git diff <merge-base> HEAD`) instead of the working tree, and ignores untracked files. Build steps that rewrite files in place before pytest runs — like PyTorch Lightning's CI rewriting imports and removing `src/` — no longer leak into the selection.
 - When reading the committed diff, the base branch prefers the remote-tracking `origin/main`/`origin/master` over the local `main`/`master`; `--local-diff` keeps preferring the local branch.
 - Default value for ranking-weight option is now `0-1`, based in recent failures instead of test speed, because it had better timing in most experiments executed.
-
 ### Fixed
 - A `conftest.py` rewritten only in the working tree (not committed) no longer forces the full suite. Previously, CI steps that edit `conftest.py` in place made `pytest-regsmart` skip selection and run every test (observed on PyTorch Lightning PR #7: 3317 tests instead of the affected subset).
-
 ## [0.7.4] - 2026-10-13
 
 ### Fixed
