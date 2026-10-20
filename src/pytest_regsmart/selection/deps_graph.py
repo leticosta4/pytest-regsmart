@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import logging
 import os
 from collections import defaultdict
@@ -50,6 +51,46 @@ class DependencyGraph:
     dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
     function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
     functions_by_file: FunctionsByFile = field(default_factory=dict)
+
+
+class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
+    """CallGraphVisitor with a narrow fallback for qualified module calls.
+
+    pyan already resolves the imported root name in the current scope. Keep
+    the remaining attribute path while the original Call AST is being visited,
+    so lazy package attributes can be matched to a known function node later.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.module_qualified_calls: set[tuple[str, str]] = set()
+        super().__init__(*args, **kwargs)
+
+    def visit_Call(self, node: ast.Call):
+        target = node.func
+        attributes: list[str] = []
+        while isinstance(target, ast.Attribute):
+            attributes.append(target.attr)
+            target = target.value
+
+        if isinstance(target, ast.Name) and attributes:
+            root_name = target.id
+            scope = self.scope_stack[-1]
+            root_value = self.get_value(root_name)
+
+            # Do not use a module import if the call's scope binds that name to
+            # a local value (for example, a parameter named ``librosa``).
+            if (
+                root_name not in scope.locals
+                and root_value is not None
+                and root_value.flavor == Flavor.MODULE
+            ):
+                caller = self.get_node_of_current_namespace().get_name()
+                qualified_target = ".".join(
+                    [root_value.get_name(), *reversed(attributes)]
+                )
+                self.module_qualified_calls.add((caller, qualified_target))
+
+        return super().visit_Call(node)
 
     
 def _extract_function_nodes(
@@ -190,7 +231,7 @@ def _build_function_dependency_graph(
     python_files: list[str],
     working_dir: str,
 ) -> DependencyGraph:
-    graph = CallGraphVisitor(
+    graph = _ModuleQualifiedCallGraphVisitor(
         filenames=python_files,
         root=working_dir,
         logger=logging.getLogger(__name__),
@@ -209,6 +250,10 @@ def _build_function_dependency_graph(
             dependency_name = dependency.get_name()
             if dependency_name in function_nodes:
                 function_dependencies[function_name].add(dependency_name)
+
+    for caller, target in graph.module_qualified_calls:
+        if caller in function_nodes and target in function_nodes:
+            function_dependencies[caller].add(target)
 
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
