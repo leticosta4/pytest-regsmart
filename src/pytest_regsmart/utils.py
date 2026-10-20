@@ -4,15 +4,15 @@ import os
 import pytest
 
 
-def _find_py_files(working_dir: str) -> list[str]: 
+def _find_py_files(working_dir: str, include_stubs: bool = False) -> list[str]:
     excludes = [".venv", ".git", "__pycache__", "dist", "build", "venv", "site-packages", ".pixi"]
 
     py_files = []
     for dirpath, dirnames, filenames in os.walk(working_dir):
-        dirnames[:] = [d for d in dirnames if d not in excludes and not d.endswith(".egg-info")]  # keep only core directories to check
+        dirnames[:] = [d for d in dirnames if d not in excludes and not d.endswith(".egg-info")]
         for filename in filenames:
-            if filename.endswith(".py"):
-                py_files.append(os.path.join(dirpath, filename)) #build the full path
+            if filename.endswith(".py") or (include_stubs and filename.endswith(".pyi")):
+                py_files.append(os.path.join(dirpath, filename))
     return py_files
 
 

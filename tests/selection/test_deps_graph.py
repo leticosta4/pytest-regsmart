@@ -500,6 +500,7 @@ def test_get_function_dependency_graph_end_to_end(git_repo):
 
 def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
     _write(tmp_path, "pkg/__init__.py", "def __getattr__(name):\n    raise AttributeError(name)\n")
+    _write(tmp_path, "pkg/__init__.pyi", "from .feature.core import griffinlim as griffinlim\n")
     _write(
         tmp_path,
         "pkg/feature/__init__.py",
@@ -512,15 +513,20 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
         "def mel_to_audio():\n    return griffinlim()\n",
     )
     _write(tmp_path, "pkg/feature/core.py", "def griffinlim():\n    return None\n")
+    _write(tmp_path, "pkg/other.py", "def griffinlim():\n    return None\n")
     _write(
         tmp_path,
         "tests/test_pkg.py",
         "import pkg as audio\n\n"
         "def test_qualified_call():\n    audio.feature.inverse.mel_to_audio()\n\n"
+        "def test_reexported_call():\n    audio.griffinlim()\n\n"
         "def test_shadowed_module(audio):\n    audio.feature.inverse.mel_to_audio()\n",
     )
 
-    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    python_files = [
+        str(path)
+        for path in (*tmp_path.rglob("*.py"), *tmp_path.rglob("*.pyi"))
+    ]
     graph = _build_function_dependency_graph(python_files, str(tmp_path))
 
     assert "tests.test_pkg.test_qualified_call" in graph.dependents[
@@ -530,8 +536,12 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
         "pkg.feature.inverse.mel_to_audio"
     ]
     assert graph.dependents["pkg.feature.core.griffinlim"] == {
-        "pkg.feature.inverse.mel_to_audio"
+        "pkg.feature.inverse.mel_to_audio",
+        "tests.test_pkg.test_reexported_call",
     }
+    assert "tests.test_pkg.test_reexported_call" not in graph.dependents.get(
+        "pkg.other.griffinlim", set()
+    )
 
 
 def test_get_function_dependency_graph_keys_are_unit_ids(git_repo):
