@@ -5,11 +5,11 @@ import pytest
 
 from src.pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL, DIFF_SOURCE
 from src.pytest_regsmart.selection import selector as selector_module
-from src.pytest_regsmart.selection.deps_graph import (
+from src.pytest_regsmart.selection.models import (
     DependencyGraph,
+    DiffResult,
     FunctionMetadata,
 )
-from src.pytest_regsmart.selection.git_manager import DiffResult
 from src.pytest_regsmart.selection.selector import (
     SELECTION_TIME_KEY,
     SELECTION_TIME_KEY_FILE_LEVEL,

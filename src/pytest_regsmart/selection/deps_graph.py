@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import TypeAlias
 
 from pyan.analyzer import CallGraphVisitor
 from pyan.modvis import ImportVisitor
@@ -14,44 +12,114 @@ from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
 from .git_manager import resolve_repo
+from .models import (
+    _KEPT_FLAVORS,
+    DependenciesMap,
+    DependencyGraph,
+    DependentsMap,
+    FunctionMetadata,
+    FunctionNodes,
+    FunctionsByFile,
+    ModuleToPath,
+    _ModuleQualifiedCallGraphVisitor,
+)
 
 _logger = logging.getLogger(__name__)
 
-_MAX_SKIPPED_FILES = 200  # teto de arquivos ignorados por SyntaxError antes de desistir
-
 #use the pyan3 API, not the CLI
 
-_KEPT_FLAVORS = {
-    Flavor.FUNCTION,
-    Flavor.METHOD,
-    Flavor.CLASSMETHOD,
-    Flavor.STATICMETHOD,
-    Flavor.CLASS,
-}  #only functions, methods and classes on the fucntion callgraph (classes because of internal methods that can be desconsidered in git diff)
-
-
-@dataclass(frozen=True, slots=True)
-class FunctionMetadata:
-    filepath: str
-    start_line: int
-    end_line: int
-
-
-NodeId: TypeAlias = str #file or function level according to diff-level
-DependenciesMap: TypeAlias = dict[NodeId, set[NodeId]]  # node -> who it depends on
-DependentsMap: TypeAlias = dict[NodeId, set[NodeId]]    # node -> who depends on it
-FunctionNodes: TypeAlias = dict[str, FunctionMetadata]
-FunctionsByFile: TypeAlias = dict[str, set[str]]
-ModuleToPath: TypeAlias = dict[str, str]
-
-
-@dataclass
-class DependencyGraph:
-    dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
-    function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
-    functions_by_file: FunctionsByFile = field(default_factory=dict)
+_MAX_SKIPPED_FILES = 200  # teto de arquivos ignorados por SyntaxError antes de desistir
 
     
+def _normalize_pyan_module_name(module_name: str) -> str:
+    """Normalize pyan's special module name for package ``__init__`` files."""
+    return module_name.replace(".__init__.", ".").removesuffix(".__init__")
+
+
+def _stub_modules_by_public_name(graph: CallGraphVisitor) -> dict[str, str]:
+    """Map importable module names to pyan scopes for matching ``.pyi`` files."""
+    result = {}
+    for module_name, filename in graph.module_to_filename.items():
+        if filename.endswith(".pyi"):
+            public_name = _normalize_pyan_module_name(module_name.removesuffix(".pyi"))
+            result[public_name] = module_name
+    return result
+
+
+def _resolve_imported_function(
+    node,
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    stub_modules: dict[str, str],
+    seen: set[tuple[str, str]] | None = None,
+) -> str | None:
+    """Resolve a pyan import binding through analyzed module and stub scopes."""
+    node_name = node.get_name()
+    if node_name in function_nodes:
+        return node_name
+    if node.flavor != Flavor.IMPORTEDITEM or node.namespace is None:
+        return None
+
+    module_name = _normalize_pyan_module_name(node.namespace)
+    symbol_name = node.name
+    key = (module_name, symbol_name)
+    if seen is None:
+        seen = set()
+    if key in seen:
+        return None
+    seen.add(key)
+
+    candidate = f"{module_name}.{symbol_name}"
+    if candidate in function_nodes:
+        return candidate
+
+    # Prefer a stub scope when available: it describes public exports that may
+    # be created dynamically by the runtime package __init__.py.
+    scope_names = [stub_modules.get(module_name), module_name]
+    for scope_name in scope_names:
+        scope = graph.scopes.get(scope_name) if scope_name else None
+        binding = scope.defs.get(symbol_name) if scope is not None else None
+        if binding is None or binding is node:
+            continue
+        resolved = _resolve_imported_function(
+            binding, graph, function_nodes, stub_modules, seen
+        )
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def _resolve_qualified_function_target(
+    target_name: str,
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    stub_modules: dict[str, str],
+) -> str | None:
+    """Resolve a qualified public name to a function node without name-only matching."""
+    if target_name in function_nodes:
+        return target_name
+
+    parts = target_name.split(".")
+    for module_end in range(len(parts) - 1, 0, -1):
+        module_name = ".".join(parts[:module_end])
+        symbol_path = parts[module_end:]
+        if len(symbol_path) != 1:
+            continue
+
+        scope_names = [stub_modules.get(module_name), module_name]
+        for scope_name in scope_names:
+            scope = graph.scopes.get(scope_name) if scope_name else None
+            binding = scope.defs.get(symbol_path[0]) if scope is not None else None
+            if binding is None:
+                continue
+            resolved = _resolve_imported_function(
+                binding, graph, function_nodes, stub_modules
+            )
+            if resolved is not None:
+                return resolved
+    return None
+
+
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
@@ -63,7 +131,11 @@ def _extract_function_nodes(
 
     for node_group in graph.nodes.values():
         for node in node_group:
-            if node.flavor not in _KEPT_FLAVORS or node.ast_node is None:
+            if (
+                node.flavor not in _KEPT_FLAVORS
+                or node.ast_node is None
+                or node.filename.endswith(".pyi")
+            ):
                 continue
 
             filepath = os.path.relpath(node.filename, working_dir)
@@ -190,7 +262,7 @@ def _build_function_dependency_graph(
     python_files: list[str],
     working_dir: str,
 ) -> DependencyGraph:
-    graph = CallGraphVisitor(
+    graph = _ModuleQualifiedCallGraphVisitor(
         filenames=python_files,
         root=working_dir,
         logger=logging.getLogger(__name__),
@@ -209,6 +281,20 @@ def _build_function_dependency_graph(
             dependency_name = dependency.get_name()
             if dependency_name in function_nodes:
                 function_dependencies[function_name].add(dependency_name)
+
+    stub_modules = _stub_modules_by_public_name(graph)
+    for caller, qualified_target in graph.module_qualified_calls:
+        if caller not in function_nodes:
+            continue
+        # Keep pyan's direct call edge when it already resolved this target.
+        if qualified_target in function_dependencies[caller]:
+            continue
+        # Resolve only qualified calls that pyan did not already represent.
+        target = _resolve_qualified_function_target(
+            qualified_target, graph, function_nodes, stub_modules
+        )
+        if target is not None:
+            function_dependencies[caller].add(target)
 
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
@@ -239,7 +325,12 @@ def get_dependency_graph(
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
-    python_files = _readable_python_files(_find_py_files(working_dir))
+    python_files = _readable_python_files(
+        _find_py_files(
+            working_dir,
+            include_stubs=graph_level == DIFF_LEVEL.FUNCTION,
+        )
+    )
 
     build = (
         _build_function_dependency_graph

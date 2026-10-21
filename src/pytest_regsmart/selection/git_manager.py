@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import TypeAlias
 
 import pytest
 from git import Repo
@@ -17,18 +15,7 @@ from pytest_regsmart.const import (
     DIFF_SOURCE,
 )
 
-LineRange: TypeAlias = tuple[int, int]
-ChangedLineRanges: TypeAlias = dict[str, list[LineRange]]
-
-
-@dataclass
-class DiffResult:
-    used_branch: str
-    modified_files: list[str] = field(default_factory=list) #staged+unstaged
-    untracked_files: list[str] = field(default_factory=list) #brand new files - maybe add a future flag to look only at unstaged+untracked tests
-    deleted_files: list[str] = field(default_factory=list)
-    changed_line_ranges: ChangedLineRanges = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
-    no_merge_base: bool = False  #base resolved, but no shared history with HEAD
+from .models import ChangedLineRanges, DiffResult
 
 
 def resolve_repo(repo_path: str = ".") -> Repo:

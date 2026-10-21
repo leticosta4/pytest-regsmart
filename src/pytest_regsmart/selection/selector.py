@@ -12,8 +12,9 @@ from pytest_regsmart.const import (
 )
 
 from ..utils import _filter_python_files, _is_conftest, _is_test_file
-from .deps_graph import DependencyGraph, get_dependency_graph
-from .git_manager import DiffResult, get_git_diff
+from .deps_graph import get_dependency_graph
+from .git_manager import get_git_diff
+from .models import DependencyGraph, DiffResult
 
 SELECTION_TIME_KEY = "Time to run the regression test selection (s)"
 SELECTION_TIME_KEY_FILE_LEVEL = "Time to run the file-level regression test selection (s)"
