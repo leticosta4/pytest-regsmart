@@ -105,7 +105,7 @@ pytest --regsmart --diff-level=file
 
 This option can also be configured via the `diff_level` ini option (see [Setting configurable options via config file](#setting-configurable-options-via-config-file)).
 
-Because the `function` level depends on the call graph, it can occasionally come back empty even though a diff exists (for example when tests reach the changed code only through names the graph does not link, such as reexports in `__init__.py`). An empty selection never degrades silently to the full suite: `pytest-regsmart` warns and falls back to the coarser — but safe — `file` level. This cascade only starts from the `function` level: with an explicit `--diff-level=file`, an empty selection goes straight to the full-suite warning.
+Because the `function` level depends on the call graph, some dynamic or indirect access patterns may be difficult to resolve. For example, a test may call a function through a qualified module path such as `pkg.module.submodule.function()`, while the package exposes `module` or `submodule` dynamically. The function-level graph now uses the imported module and the qualified path to connect that call to a matching function node, allowing changes in that function to reach the test. A root name shadowed by a local variable or parameter is not treated as the imported module. Other unresolved relationships, such as some reexports in `__init__.py`, can still leave the selection empty even though a diff exists; in that case, `pytest-regsmart` warns and falls back to the coarser and safer `file` level. This cascade only starts from the `function` level: with an explicit `--diff-level=file`, an empty selection goes straight to the full-suite warning.
 
 ```
 WARNING: Function-level selection found no affected tests; falling back to file-level selection (1 test file(s)).
@@ -162,7 +162,7 @@ pytest --regsmart --ranking-hist-len=30
 ```
 
 The default value is 50.
-Note that `pytest-regsmart` does not store any historical test run logs, it merely updates its cached data from the previous run with data from the latest run.
+`pytest-regsmart` stores per-test feature data in pytest's cache: the most recent call duration and the number of successful runs since the last failure. Each run updates those values from tests that reached the call phase; skipped tests are not recorded. A failure resets that test's failure counter to zero, while a pass increments it up to `--ranking-hist-len`. This is cached feature data, not a complete log of prior test runs.
 
 ### Running tests in random order
 
@@ -216,7 +216,7 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
 3. **Propagate changes transitively.** A depth-first traversal (DFS, implemented with a LIFO stack) starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
 4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed. As a safety net, if the filter would remove *every* collected test (a nodeid mismatch between the graph and pytest's collection), the original list is restored and a warning is reported, instead of pytest exiting with "no tests ran".
 
-If there is no diff since the baseline, `pytest-regsmart` skips both dependency-graph generation and test selection, reports a warning, and runs the full test suite. RTP still runs unless `--no-rank` is set; with both no diff and `--no-rank`, the plugin reports that it has no work to do.
+If there is no diff in Python files since the baseline, `pytest-regsmart` skips both dependency-graph generation and test selection, reports a warning, and runs the full test suite. Changes to non-Python files alone do not trigger RTS. RTP still runs unless `--no-rank` is set; with no Python diff and `--no-rank`, the plugin reports that it has no work to do.
 
 Two additional edge cases also cause selection to be skipped (the full suite runs):
 
@@ -227,6 +227,8 @@ A fourth case is different: a diff exists and the graph is built, but the select
 
 - at the `function` level (the default), the selection is retried at the `file` level, and the summary reports `WARNING: Function-level selection found no affected tests; falling back to file-level selection (N test file(s)).`;
 - if the `file` level also finds nothing — or was requested explicitly with `--diff-level=file` — the summary reports `WARNING: Diff detected but no affected tests found at file level: running the full suite.` and the full suite runs.
+
+Deleted Python files are included in the Git diff. Since the dependency graph is built from files present in the working tree, a deleted file has no graph node to trace to its dependents. If that leaves no affected tests, the same empty-selection behavior applies: function-level selection retries at file level, and an empty file-level result runs the full suite with a warning. This favors running extra tests over silently skipping tests after a deletion.
 
 Because selection granularity follows `--diff-level`, the default `function` level narrows the selection down to the affected test functions, while `file` selects whole files and is therefore intentionally conservative: a change in one module selects every test file that transitively depends on it, which may include more tests than strictly necessary. See [Choosing the diff granularity](#choosing-the-diff-granularity).
 
