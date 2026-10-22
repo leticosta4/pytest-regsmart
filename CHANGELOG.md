@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-## [0.8.1] - 2026-10-20
+## [0.8.1] - 2026-10-21
 
 ### Security
+- Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.4 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
