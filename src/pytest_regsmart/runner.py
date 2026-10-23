@@ -1,20 +1,27 @@
 from __future__ import annotations
- 
+
 import pytest
 from _pytest.config import Config
 from _pytest.main import Session
 from _pytest.nodes import Item
 from _pytest.reports import TestReport
 from _pytest.terminal import TerminalReporter
- 
+
 from . import reporter as reporter_mod
 from .config import PluginConfig
 from .const import DIFF_SOURCE
 from .monitor import Monitor
 from .ranking import extractor, ranker
 from .selection import selector
- 
- 
+
+_XDIST_INFO_KEY = "pytest_regsmart"
+_XDIST_LOG_KEYS = (
+    selector.SELECTION_TIME_KEY,
+    selector.SELECTION_TIME_KEY_FILE_LEVEL,
+    ranker.RANKING_TIME_KEY,
+)
+
+
 class PluginRunner:  #pytest hooks
     def __init__(self, config: Config, plugin_config: PluginConfig) -> None:
         self.config = config
@@ -22,6 +29,7 @@ class PluginRunner:  #pytest hooks
         self.log: dict = {}
         self.warnings: list[str] = []
         self.monitor = Monitor()
+        self._xdist_worker_info: list[dict] = []
 
  
     @pytest.hookimpl(trylast=True)
@@ -133,6 +141,49 @@ class PluginRunner:  #pytest hooks
         )
         self.log["Tests executed"] = len(self.monitor.test_reports)
 
+        workeroutput = getattr(self.config, "workeroutput", None)
+        if workeroutput is not None and self.config.getoption("--regsmart"):
+            workeroutput[_XDIST_INFO_KEY] = {
+                "log": {key: self.log[key] for key in _XDIST_LOG_KEYS if key in self.log},
+                "warnings": self.warnings,
+                "branch": self.plugin_config.branch,
+            }
+
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_testnodedown(self, node, error) -> None:
+        """Collect pytest-regsmart information returned by an xdist worker."""
+        info = getattr(node, "workeroutput", {}).get(_XDIST_INFO_KEY)
+        if info is not None:
+            self._xdist_worker_info.append(info)
+
+    def _merge_xdist_worker_info(self) -> None:
+        if not self._xdist_worker_info:
+            return
+
+        # Workers perform collection, selection, and prioritization in parallel.
+        # The maximum duration is the critical path before test execution starts.
+        for key in _XDIST_LOG_KEYS:
+            values = [
+                info["log"][key]
+                for info in self._xdist_worker_info
+                if key in info["log"]
+            ]
+            if values:
+                self.log[key] = max(values)
+
+        branches = {info["branch"] for info in self._xdist_worker_info if info["branch"]}
+        if len(branches) == 1:
+            self.plugin_config.branch = branches.pop()
+        elif len(branches) > 1:
+            branches_string = ", ".join(sorted(branches))
+            self.warnings.append(
+                f"xdist workers used different comparison branches: {branches_string}"
+            )
+
+        for info in self._xdist_worker_info:
+            for warning in info["warnings"]:
+                if warning not in self.warnings:
+                    self.warnings.append(warning)
 
     def pytest_terminal_summary(
         self,
@@ -141,6 +192,7 @@ class PluginRunner:  #pytest hooks
         config: Config,
     ) -> None:
         if self.config.getoption("--regsmart"):
+            self._merge_xdist_worker_info()
             reporter_mod.pytest_terminal_summary(
                 terminalreporter, self.log, self.warnings, branch=self.plugin_config.branch,
             )
