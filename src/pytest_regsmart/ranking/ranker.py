@@ -9,6 +9,8 @@ import numpy as np
 
 from ..const import RANK_LEVEL
 
+RANKING_TIME_KEY = "Time to run the regression test prioritization (s)"
+
 
 def get_test_group(nodeid: str, level: RANK_LEVEL) -> str:
     """Get test group at different granularity levels.
@@ -105,4 +107,4 @@ def run_rtp(
     )
     items[:] = od_items + nod_items
 
-    log_dict["Time to run the regression test prioritization (s)"] = time.time() - start_time
+    log_dict[RANKING_TIME_KEY] = time.time() - start_time
