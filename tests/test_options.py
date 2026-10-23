@@ -85,6 +85,7 @@ def test_random_order(mytester):
 
 
 def test_xdist(mytester):
+    pytest.importorskip("xdist")
     mytester.makepyfile(
         test_put_one=test_put_one,
     )
@@ -104,6 +105,7 @@ def test_xdist(mytester):
 def test_xdist_summary_includes_worker_info(
     selection_project, ranking_args, expect_ranking
 ):
+    pytest.importorskip("xdist")
     pytester, repo = selection_project
     (Path(repo.working_tree_dir) / "service.py").write_text(
         "def run():\n    return 42  # changed\n"
