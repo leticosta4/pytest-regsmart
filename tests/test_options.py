@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.fake_test_data import (
     test_a_method,
     test_b_class,
@@ -83,6 +85,7 @@ def test_random_order(mytester):
 
 
 def test_xdist(mytester):
+    pytest.importorskip("xdist")
     mytester.makepyfile(
         test_put_one=test_put_one,
     )
@@ -90,6 +93,42 @@ def test_xdist(mytester):
     args = ["-v", "--regsmart", "-n", "auto", "--ranking-weight=0-0"]
     out = mytester.runpytest(*args)
     assert len([x for x in out.outlines if x.startswith("ERROR")]) == 0
+
+
+@pytest.mark.parametrize(
+    "ranking_args, expect_ranking",
+    [
+        (["--ranking-weight=1-0"], True),
+        (["--no-rank"], False),
+    ],
+)
+def test_xdist_summary_includes_worker_info(
+    selection_project, ranking_args, expect_ranking
+):
+    pytest.importorskip("xdist")
+    pytester, repo = selection_project
+    (Path(repo.working_tree_dir) / "service.py").write_text(
+        "def run():\n    return 42  # changed\n"
+    )
+
+    out = pytester.runpytest("-v", "-n", "2", "--regsmart", *ranking_args)
+
+    out.assert_outcomes(passed=3)
+    assert "Tests executed: 3" in out.outlines
+    assert any(
+        line.startswith("Default branch used for comparison:")
+        for line in out.outlines
+    )
+    assert any(
+        line.startswith("Time to run the regression test selection (s):")
+        for line in out.outlines
+    )
+    has_ranking_time = any(
+        line.startswith("Time to run the regression test prioritization (s):")
+        for line in out.outlines
+    )
+    assert has_ranking_time is expect_ranking
+    assert not any("test_unrelated.py::" in line for line in out.outlines)
 
 
 def test_invalid_level(mytester):

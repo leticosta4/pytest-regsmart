@@ -73,6 +73,8 @@ Tests executed: 84
 
 `Tests executed` is the final count reported by pytest. When selection is skipped or the whole suite runs because of it, the summary also prints the reason as a line starting with `WARNING:` (see [How Regression Test Selection (RTS) works](#how-regression-test-selection-rts-works)).
 
+When using `pytest-xdist`, the controller summary also includes selection and prioritization timings, the comparison branch, and warnings reported by the workers. For each timing, it reports the slowest worker duration; no prioritization timing is shown when prioritization is disabled or skipped.
+
 ### Disabling ranking (RTP)
 
 You can disable the regression test prioritization while keeping the plugin active with the `--no-rank` flag:
