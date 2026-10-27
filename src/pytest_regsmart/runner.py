@@ -121,10 +121,19 @@ class PluginRunner:  #pytest hooks
             )
 
         if selection.degraded_to_file:
-            self.warnings.append(
-                "Function-level selection found no affected tests; falling back to "
-                f"file-level selection ({len(selection.affected_tests)} test file(s))."
-            )
+            if selection.degraded_from_unresolved and selection.affected_tests:
+                files = ", ".join(selection.unresolved_files)
+                self.warnings.append(
+                    "Function-level selection left "
+                    f"{len(selection.unresolved_files)} file(s) unresolved "
+                    f"({files}); falling back to file-level selection "
+                    f"({len(selection.affected_tests)} test file(s))."
+                )
+            else:
+                self.warnings.append(
+                    "Function-level selection found no affected tests; falling back to "
+                    f"file-level selection ({len(selection.affected_tests)} test file(s))."
+                )
 
  
     def pytest_runtest_logreport(self, report: TestReport) -> None:

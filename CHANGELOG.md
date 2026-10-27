@@ -11,11 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.1] - 2026-10-26
 
 ### Added
+- Flag deleted files in the diff result and warn explicitly (`WARNING: Deleted file(s) detected (N): a.py, b.py; running the full suite.`) instead of the generic "no affected tests" message when a diff contains only deletions
+- Track changed files that the function-level selection cannot resolve — hunks outside every function/class, deleted functions or files, modules without functions, files absent from the graph — in the `SelectionResult`
+- Conservative cascade for unresolved files: when the function-level selection is empty *or* a changed file is unresolved, fall back to file-level selection even if the function-level set is non-empty, with a dedicated warning (`WARNING: Function-level selection left N file(s) unresolved (a.py); falling back to file-level selection (M test file(s)).`)
 - Add remote branches fallback to `--local-diff` flag when value is True
 ### Security
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
+- Deleting a function/class or an assumed-empty module no longer silently drops its dependent tests: the run degrades to file-level selection (dependents reached only through *lazy imports* remain outside both graphs, but are now reported by the warning instead of being silently skipped)
 - With `pytest-xdist`, the summary now includes selection and prioritization timings, the comparison branch, and warnings collected by workers. Timings report the slowest worker duration.
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16

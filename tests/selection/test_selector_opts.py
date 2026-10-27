@@ -239,6 +239,83 @@ def test_function_level_editing_class_attribute_runs_its_methods(selection_proje
     ]
 
 
+def test_function_level_module_constant_change_degrades_to_file_level(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "extra.py",
+        'def alpha():\n    return "a"\n\n\nVALUE = 1\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_extra.py",
+        "import extra\n"
+        "\n"
+        "def test_alpha():\n"
+        '    assert extra.alpha() == "a"\n'
+        "\n"
+        "def test_value():\n"
+        "    assert extra.VALUE == 1\n",
+    )
+    # change lands on a module-scope constant, outside every function
+    _change(repo, "extra.py", 'def alpha():\n    return "a"\n\n\nVALUE = 2\n')
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=1, failed=1)
+    assert _ran_nodeids(out) == ["test_extra.py::test_alpha"]
+    assert any("test_extra.py::test_value FAILED" in line for line in out.outlines)
+    assert any(
+        "Function-level selection left 1 file(s) unresolved (extra.py)" in x
+        for x in out.outlines
+    )
+
+
+def test_function_level_whole_function_deletion_degrades_to_file_level(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "multi.py",
+        'def alpha():\n    return "a"\n\n\n'
+        'def beta():\n    return "b"\n\n\n'
+        'def gamma():\n    return "c"\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_multi.py",
+        "import multi\n"
+        "\n"
+        'def test_alpha():\n    assert multi.alpha() == "a"\n'
+        "\n"
+        'def test_beta():\n    assert multi.beta() == "b"\n'
+        "\n"
+        'def test_gamma():\n    assert multi.gamma() == "c"\n',
+    )
+    # beta is removed entirely: its node no longer exists in the call graph,
+    # so its dependents cannot be located at the function level
+    _change(
+        repo,
+        "multi.py",
+        'def alpha():\n    return "a"\n\n\ndef gamma():\n    return "c"\n',
+    )
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank")
+
+    out.assert_outcomes(passed=2, failed=1)
+    ran = sorted(
+        line.split(" ")[0]
+        for line in out.outlines
+        if "::" in line
+        and line.split()[-1].strip() in ("PASSED", "FAILED")
+    )
+    assert ran == [
+        "test_multi.py::test_alpha",
+        "test_multi.py::test_beta",
+        "test_multi.py::test_gamma",
+    ]
+    assert any("falling back to file-level selection" in x for x in out.outlines)
+
+
 def test_diff_level_ini_option_used_when_cli_absent(selection_project):
     pytester, repo = selection_project
     _commit_new_file(
@@ -509,8 +586,8 @@ def test_function_level_empty_falls_back_to_file_level(selection_project):
     out.assert_outcomes(passed=1)
     assert _ran_files(out) == ["test_const.py"]
     assert any(
-        "Function-level selection found no affected tests; falling back to "
-        "file-level selection (1 test file(s))." in x
+        "Function-level selection left 1 file(s) unresolved (const_mod.py); "
+        "falling back to file-level selection (1 test file(s))." in x
         for x in out.outlines
     )
 

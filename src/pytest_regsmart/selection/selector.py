@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pytest_regsmart.const import (
     DEFAULT_DIFF_LEVEL,
@@ -29,6 +29,9 @@ class SelectionResult:
     no_merge_base: bool = False
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL
     degraded_to_file: bool = False
+    deleted_files: list[str] = field(default_factory=list)
+    unresolved_files: list[str] = field(default_factory=list)
+    degraded_from_unresolved: bool = False
 
 
 def line_diff_match_function_ids(
@@ -62,6 +65,48 @@ def line_diff_match_function_ids(
             changed.update(matched or candidates)  #not a specific match
 
     return changed
+
+
+def _unresolved_changed_files(
+    diff_result: DiffResult,
+    deps_graph: DependencyGraph,
+) -> set[str]:
+    """Changed files the function-level graph cannot fully resolve.
+
+    A file is unresolved when it has no function node in the graph (e.g. a
+    module of constants, or a deleted file) or when some changed hunk falls
+    outside every function/method/class: the node that used to exist may be
+    gone (deleted function) or the change is not tied to any callable
+    (imports, constants, comments). Such files are handled conservatively at
+    the file level, since function-level dependents cannot be located."""
+ 
+    unresolved: set[str] = set()
+
+    no_range_files = (
+        set(diff_result.untracked_files)
+        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
+    )
+    for filepath in no_range_files:
+        if not deps_graph.functions_by_file.get(filepath):
+            unresolved.add(filepath)
+
+    for filepath, ranges in diff_result.changed_line_ranges.items():
+        candidates = deps_graph.functions_by_file.get(filepath, set())
+        if not candidates:
+            unresolved.add(filepath)
+            continue
+
+        for start, end in ranges:
+            matched = any(
+                start <= deps_graph.function_nodes[fid].end_line
+                and deps_graph.function_nodes[fid].start_line <= end
+                for fid in candidates
+            )
+            if not matched:
+                unresolved.add(filepath)
+                break
+
+    return unresolved
 
 
 def _get_affected_nodes(
@@ -200,6 +245,12 @@ def run_rts(
         else _get_affected_tests_at_file_level(diff_result, deps_graph)
     )
 
+    unresolved = (
+        sorted(_unresolved_changed_files(diff_result, deps_graph))
+        if level == DIFF_LEVEL.FUNCTION
+        else []
+    )
+
     if log_dict is not None:
         log_dict[time_key] = time.time() - start_time
 
@@ -208,16 +259,18 @@ def run_rts(
         has_diff=has_diff,
         branch=used_branch,
         level=level,
+        deleted_files=diff_result.deleted_files,
+        unresolved_files=unresolved,
     )
 
 
 def _should_degrade_to_file(result: SelectionResult, level: DIFF_LEVEL) -> bool:
     return (
         level == DIFF_LEVEL.FUNCTION
-        and not result.affected_tests
         and result.has_diff
         and not result.full_run
         and not result.no_merge_base
+        and (not result.affected_tests or bool(result.unresolved_files))
     )
 
 
@@ -226,11 +279,13 @@ def run_rts_with_fallback(
     log_dict: dict | None = None,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
 ) -> SelectionResult:
-    """Run RTS and, on a suspicious empty function-level result, retry at file level.
+    """Run RTS and, on a suspicious function-level result, retry at file level.
 
-    A function-level selection that finds nothing while a diff exists is often a
-    false negative (e.g. tests calling names reexported in ``__init__.py``), so
-    the file-level selection is used as a safer, less precise fallback.
+    A function-level selection is suspicious when it finds nothing while a diff
+    exists (e.g. tests calling names reexported in ``__init__.py``) or when a
+    changed file cannot be resolved in the call graph (deleted function, change
+    outside any function). In both cases the file-level selection is used as a
+    safer, less precise fallback.
     """
     result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source)
 
@@ -244,4 +299,6 @@ def run_rts_with_fallback(
         diff_source=diff_source,
     )
     fallback.degraded_to_file = True
+    fallback.degraded_from_unresolved = bool(result.unresolved_files)
+    fallback.unresolved_files = result.unresolved_files
     return fallback
