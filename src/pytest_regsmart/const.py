@@ -37,7 +37,7 @@ DEFAULT_DIFF_SOURCE = DIFF_SOURCE.COMMIT
 
 DIFF_HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
-DEFAULT_BRANCH_CANDIDATES = ("main", "master")
+DEFAULT_BRANCH_CANDIDATES = ("main", "master", "origin/main", "origin/master")
 COMMIT_BRANCH_CANDIDATES = ("origin/main", "origin/master", "main", "master")
 
 BASE_BRANCH_CANDIDATES: dict[DIFF_SOURCE, tuple[str, ...]] = {

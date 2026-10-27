@@ -595,3 +595,20 @@ def test_local_diff_ini_option_reads_worktree_changes(selection_project):
 
     out.assert_outcomes(passed=3)
     assert _ran_files(out) == ["test_other.py", "test_service.py"]
+
+
+def test_local_diff_without_local_main_uses_origin_main(selection_project):
+    pytester, repo = selection_project
+    repo.git.branch("-m", "main")
+    repo.git.update_ref("refs/remotes/origin/main", repo.head.commit)
+    repo.git.checkout("-b", "feature")
+    repo.delete_head("main", force=True)
+    _committed_ini(repo)
+    _change(repo, "service.py", "def run():\n    return 42  # changed\n")
+
+    out = pytester.runpytest("-v", "--regsmart", "--no-rank", "--local-diff")
+
+    assert not any("main/master was not found" in x for x in out.errlines)
+    out.assert_outcomes(passed=3)
+    assert _ran_files(out) == ["test_other.py", "test_service.py"]
+    assert any("Default branch used for comparison: origin/main" in x for x in out.outlines)

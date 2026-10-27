@@ -8,8 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-## [0.8.1] - 2026-10-23
+## [0.8.1] - 2026-10-26
 
+### Added
+- Add remote branches fallback to `--local-diff` flag when value is True
 ### Security
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
