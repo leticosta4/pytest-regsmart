@@ -476,3 +476,13 @@ def test_commit_source_no_changes_returns_empty(git_repo, commit_file):
 
     assert result.modified_files == []
     assert result.deleted_files == []
+
+
+def test_resolve_base_ref_worktree_falls_back_to_origin_main(git_repo, commit_file):
+    commit_file("file_a.py")
+    git_repo.git.branch("-m", "main")
+    git_repo.git.update_ref("refs/remotes/origin/main", git_repo.head.commit)
+    git_repo.git.checkout("-b", "feature")
+    git_repo.delete_head("main", force=True)
+
+    assert resolve_base_ref(git_repo, WORKTREE) == "origin/main"
