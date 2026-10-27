@@ -66,7 +66,10 @@ def _deleted_between(repo: Repo, merge_base_hash: str, head_hash: str) -> list[s
     return raw_diff.splitlines()
 
 
-def parse_diff_output(raw_diff: str) -> ChangedLineRanges:
+def parse_diff_output(
+    raw_diff: str,
+    pure_deletion_files: set[str] | None = None,
+) -> ChangedLineRanges:
     """Parses `git diff -U0` and returns the changed line ranges for each file from the entire repo"""
     changed_line_ranges: ChangedLineRanges = {}
     current_file: str | None = None
@@ -88,6 +91,8 @@ def parse_diff_output(raw_diff: str) -> ChangedLineRanges:
         # filters the hunk header: @@ -1,10 +1,12 @@ to get the start and end lines
         new_start_line = int(hunk_match.group(1))
         new_count = int(hunk_match.group(2)) if hunk_match.group(2) is not None else 1  # it's 1 if the hunk is a single line change (e.g., +1)
+        if new_count == 0 and pure_deletion_files is not None:
+            pure_deletion_files.add(current_file)
         new_end_line = new_start_line if new_count == 0 else new_start_line + new_count - 1  # has the same value as start_line if the change is just deletion
 
         # get the changed line ranges for the current modified file
@@ -150,13 +155,15 @@ def get_git_diff(
 
     if diff_level == DIFF_LEVEL.FUNCTION:
         raw_diff = repo.git.diff(*diff_args, unified=0)
+        pure_deletion_files: set[str] = set()
 
         return DiffResult(
                     modified_files=modified_files,
                     untracked_files=untracked_diff,
                     deleted_files=deleted_files,
                     used_branch=base_ref,
-                    changed_line_ranges=parse_diff_output(raw_diff)
+                    changed_line_ranges=parse_diff_output(raw_diff, pure_deletion_files),
+                    pure_deletion_files=pure_deletion_files,
             )
 
     return DiffResult(

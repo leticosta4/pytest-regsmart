@@ -288,6 +288,24 @@ def test_parse_diff_output(raw_diff, expected):
     assert parse_diff_output(raw_diff) == expected
 
 
+def test_parse_diff_output_tracks_pure_deletion_files():
+    deleted_files = set()
+
+    result = parse_diff_output(
+        _diff(
+            "--- a/lib.py",
+            "+++ b/lib.py",
+            "@@ -18,4 +17,0 @@ class Calc:",
+            "-def last():",
+            "-    return 1",
+        ),
+        pure_deletion_files=deleted_files,
+    )
+
+    assert result == {"lib.py": [(17, 17)]}
+    assert deleted_files == {"lib.py"}
+
+
 @pytest.mark.parametrize(
     ("original", "edited", "expected"),
     [
