@@ -316,6 +316,74 @@ def test_function_level_whole_function_deletion_degrades_to_file_level(selection
     assert any("falling back to file-level selection" in x for x in out.outlines)
 
 
+def test_deleted_module_selects_tests_that_import_it(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "retired.py",
+        'def run():\n    return "available"\n',
+    )
+    _commit_new_file(
+        repo,
+        "test_retired.py",
+        "def test_retired_module():\n"
+        "    import retired\n"
+        "    assert retired.run() == 'available'\n",
+    )
+    _commit_new_file(
+        repo,
+        "test_still_here.py",
+        "def test_still_here():\n    assert True\n",
+    )
+    (Path(repo.working_tree_dir) / "retired.py").unlink()
+
+    out = pytester.runpytest("-v", "--regsmart", "--diff-level=file", "--no-rank")
+
+    out.assert_outcomes(passed=0, failed=1)
+    assert any("test_retired.py::test_retired_module FAILED" in x for x in out.outlines)
+    assert not any("test_still_here.py::test_still_here" in x for x in out.outlines)
+
+
+def test_function_level_deleted_statement_selects_dependent_test(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "calculation.py",
+        "def calculate():\n"
+        "    intermediate = 20\n"
+        "    return intermediate + 22\n",
+    )
+    _commit_new_file(
+        repo,
+        "test_calculation.py",
+        "import calculation\n\n"
+        "def test_calculate():\n"
+        "    assert calculation.calculate() == 42\n",
+    )
+    _commit_new_file(
+        repo,
+        "test_unrelated_calculation.py",
+        "def test_unrelated_calculation():\n    assert True\n",
+    )
+    _change(
+        repo,
+        "calculation.py",
+        "def calculate():\n"
+        "    intermediate = 20\n",
+    )
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "--diff-level=function", "--no-rank"
+    )
+
+    out.assert_outcomes(passed=0, failed=1)
+    assert any("test_calculation.py::test_calculate FAILED" in x for x in out.outlines)
+    assert not any(
+        "test_unrelated_calculation.py::test_unrelated_calculation" in x
+        for x in out.outlines
+    )
+
+
 def test_diff_level_ini_option_used_when_cli_absent(selection_project):
     pytester, repo = selection_project
     _commit_new_file(
