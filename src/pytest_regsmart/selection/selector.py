@@ -46,6 +46,7 @@ def line_diff_match_function_ids(
     no_range_files = ( 
         set(diff_result.untracked_files)
         | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
+        | set(diff_result.deleted_files)
     ) #maybe broken
 
     for filepath in no_range_files:
@@ -85,6 +86,7 @@ def _unresolved_changed_files(
     no_range_files = (
         set(diff_result.untracked_files)
         | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
+        | set(diff_result.deleted_files)
     )
     for filepath in no_range_files:
         if not deps_graph.functions_by_file.get(filepath):
@@ -138,7 +140,11 @@ def _get_affected_tests_at_file_level(
     diff_result: DiffResult,
     deps_graph: DependencyGraph,
 ) -> list[str]:
-    changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
+    changed_files = (
+        set(diff_result.modified_files)
+        | set(diff_result.untracked_files)
+        | set(diff_result.deleted_files)
+    )
     affected_nodes = _get_affected_nodes(changed_files, deps_graph)
 
     return sorted(node for node in affected_nodes if _is_test_file(node))
@@ -207,7 +213,12 @@ def run_rts(
     diff_result = get_git_diff(diff_level=level, diff_source=diff_source)
     diff_result.modified_files = _filter_python_files(diff_result.modified_files)
     diff_result.untracked_files = _filter_python_files(diff_result.untracked_files)
-    has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
+    diff_result.deleted_files = _filter_python_files(diff_result.deleted_files)
+    has_diff = bool(
+        diff_result.modified_files
+        or diff_result.untracked_files
+        or diff_result.deleted_files
+    )
     used_branch = diff_result.used_branch
 
     if diff_result.no_merge_base:
@@ -227,7 +238,11 @@ def run_rts(
             level=level,
         )
 
-    changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
+    changed_files = (
+        set(diff_result.modified_files)
+        | set(diff_result.untracked_files)
+        | set(diff_result.deleted_files)
+    )
     if any(_is_conftest(f) for f in changed_files):
         return SelectionResult(
             affected_tests=[],
@@ -237,7 +252,10 @@ def run_rts(
             level=level,
         )
     
-    deps_graph = get_dependency_graph(graph_level= level)
+    deps_graph = get_dependency_graph(
+        graph_level=level,
+        deleted_files=diff_result.deleted_files,
+    )
 
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
