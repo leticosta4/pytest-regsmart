@@ -200,6 +200,22 @@ def test_unresolved_deleted_function_anchor_outside_surviving_functions():
     assert _unresolved_changed_files(diff_result, deps_graph) == {"app/service.py"}
 
 
+def test_pure_deletion_hunk_is_unresolved_even_when_anchor_hits_surviving_class():
+    deps_graph = DependencyGraph(
+        dependents={},
+        function_nodes={"app.service.Calc": FunctionMetadata("app/service.py", 1, 20)},
+        functions_by_file={"app/service.py": {"app.service.Calc"}},
+    )
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(17, 17)]},
+        pure_deletion_files={"app/service.py"},
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == {"app/service.py"}
+
+
 def test_unresolved_file_absent_from_graph():
     deps_graph = _function_graph()
     diff_result = DiffResult(
@@ -377,7 +393,7 @@ def test_run_rts_function_level_reports_unresolved_files(
     Path(git_repo.working_tree_dir, "const_mod.py").write_text("VALUE = 2\n")
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(DIFF_LEVEL.FUNCTION)
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
 
     assert result.affected_tests == []
     assert result.unresolved_files == ["const_mod.py"]
@@ -392,7 +408,7 @@ def test_run_rts_function_level_resolved_diff_has_no_unresolved_files(
     )
     monkeypatch.chdir(git_repo.working_tree_dir)
 
-    result = run_rts(DIFF_LEVEL.FUNCTION)
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
 
     assert result.affected_tests == ["test_app.py::test_run"]
     assert result.unresolved_files == []
@@ -578,7 +594,11 @@ def _fake_rts(monkeypatch, results_by_level: dict[DIFF_LEVEL, SelectionResult]):
     calls: list[tuple[DIFF_LEVEL, str]] = []
 
     def fake(
-        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None
+        level=DEFAULT_DIFF_LEVEL,
+        log_dict=None,
+        time_key=SELECTION_TIME_KEY,
+        diff_source=None,
+        files_to_select=None,
     ):
         calls.append((level, time_key))
         if log_dict is not None:
@@ -636,29 +656,36 @@ def test_fallback_with_both_levels_empty_returns_empty_result(monkeypatch):
     assert result.level == DIFF_LEVEL.FILE
 
 
-def test_fallback_degrades_when_selection_non_empty_but_files_unresolved(monkeypatch):
-    calls = _fake_rts(
-        monkeypatch,
-        {
-            DIFF_LEVEL.FUNCTION: _result(
-                DIFF_LEVEL.FUNCTION,
+def test_fallback_supplements_nonempty_function_selection_for_unresolved_files(monkeypatch):
+    calls = []
+
+    def fake(
+        level=DEFAULT_DIFF_LEVEL,
+        log_dict=None,
+        time_key=SELECTION_TIME_KEY,
+        diff_source=None,
+        files_to_select=None,
+    ):
+        calls.append((level, time_key, files_to_select))
+        if level == DIFF_LEVEL.FUNCTION:
+            return _result(
+                level,
                 ["test_a.py::test_one"],
                 unresolved_files=["const_mod.py"],
-            ),
-            DIFF_LEVEL.FILE: _result(
-                DIFF_LEVEL.FILE, ["test_a.py", "test_b.py"]
-            ),
-        },
-    )
+            )
+        return _result(level, ["test_b.py"])
+
+    monkeypatch.setattr(selector_module, "run_rts", fake)
 
     result = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION)
 
-    assert result.affected_tests == ["test_a.py", "test_b.py"]
-    assert result.level == DIFF_LEVEL.FILE
+    assert result.affected_tests == ["test_a.py::test_one", "test_b.py"]
+    assert result.level == DIFF_LEVEL.FUNCTION
     assert result.degraded_to_file is True
     assert result.degraded_from_unresolved is True
     assert result.unresolved_files == ["const_mod.py"]
-    assert [level for level, _ in calls] == [DIFF_LEVEL.FUNCTION, DIFF_LEVEL.FILE]
+    assert [level for level, _, _ in calls] == [DIFF_LEVEL.FUNCTION, DIFF_LEVEL.FILE]
+    assert calls[1][2] == {"const_mod.py"}
 
 
 def test_fallback_not_triggered_when_function_selection_finds_tests(monkeypatch):

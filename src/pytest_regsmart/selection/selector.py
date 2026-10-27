@@ -20,6 +20,14 @@ SELECTION_TIME_KEY = "Time to run the regression test selection (s)"
 SELECTION_TIME_KEY_FILE_LEVEL = "Time to run the file-level regression test selection (s)"
 
 
+def _files_without_line_ranges(diff_result: DiffResult) -> set[str]:
+    return (
+        set(diff_result.untracked_files)
+        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
+        | set(diff_result.deleted_files)
+    )
+
+
 @dataclass
 class SelectionResult:
     affected_tests: list[str]
@@ -43,13 +51,7 @@ def line_diff_match_function_ids(
     specific range fallback to the entire file"""
     changed: set[str] = set()
 
-    no_range_files = ( 
-        set(diff_result.untracked_files)
-        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
-        | set(diff_result.deleted_files)
-    ) #maybe broken
-
-    for filepath in no_range_files:
+    for filepath in _files_without_line_ranges(diff_result):
         changed.update(deps_graph.functions_by_file.get(filepath, set()))
 
     for filepath, ranges in diff_result.changed_line_ranges.items():
@@ -83,14 +85,11 @@ def _unresolved_changed_files(
  
     unresolved: set[str] = set()
 
-    no_range_files = (
-        set(diff_result.untracked_files)
-        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
-        | set(diff_result.deleted_files)
-    )
-    for filepath in no_range_files:
+    for filepath in _files_without_line_ranges(diff_result):
         if not deps_graph.functions_by_file.get(filepath):
             unresolved.add(filepath)
+
+    unresolved.update(diff_result.pure_deletion_files)
 
     for filepath, ranges in diff_result.changed_line_ranges.items():
         candidates = deps_graph.functions_by_file.get(filepath, set())
@@ -139,12 +138,14 @@ def _get_affected_nodes(
 def _get_affected_tests_at_file_level(
     diff_result: DiffResult,
     deps_graph: DependencyGraph,
+    changed_files: set[str] | None = None,
 ) -> list[str]:
-    changed_files = (
-        set(diff_result.modified_files)
-        | set(diff_result.untracked_files)
-        | set(diff_result.deleted_files)
-    )
+    if changed_files is None:
+        changed_files = (
+            set(diff_result.modified_files)
+            | set(diff_result.untracked_files)
+            | set(diff_result.deleted_files)
+        )
     affected_nodes = _get_affected_nodes(changed_files, deps_graph)
 
     return sorted(node for node in affected_nodes if _is_test_file(node))
@@ -206,6 +207,7 @@ def run_rts(
     log_dict: dict | None = None,
     time_key: str = SELECTION_TIME_KEY,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    files_to_select: set[str] | None = None,
 ) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
@@ -260,7 +262,9 @@ def run_rts(
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
         if level == DIFF_LEVEL.FUNCTION
-        else _get_affected_tests_at_file_level(diff_result, deps_graph)
+        else _get_affected_tests_at_file_level(
+            diff_result, deps_graph, changed_files=files_to_select
+        )
     )
 
     unresolved = (
@@ -299,24 +303,38 @@ def run_rts_with_fallback(
 ) -> SelectionResult:
     """Run RTS and, on a suspicious function-level result, retry at file level.
 
-    A function-level selection is suspicious when it finds nothing while a diff
-    exists (e.g. tests calling names reexported in ``__init__.py``) or when a
-    changed file cannot be resolved in the call graph (deleted function, change
-    outside any function). In both cases the file-level selection is used as a
-    safer, less precise fallback.
+    An empty function-level selection falls back to file-level selection. When
+    it found tests but some changed files are unresolved, add file-level
+    dependents for only those files and preserve the function-level results.
     """
     result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source)
 
     if not _should_degrade_to_file(result, level):
         return result
 
-    fallback = run_rts(
-        level=DIFF_LEVEL.FILE,
-        log_dict=log_dict,
-        time_key=SELECTION_TIME_KEY_FILE_LEVEL,
-        diff_source=diff_source,
-    )
-    fallback.degraded_to_file = True
-    fallback.degraded_from_unresolved = bool(result.unresolved_files)
-    fallback.unresolved_files = result.unresolved_files
-    return fallback
+    if not result.affected_tests:
+        fallback = run_rts(
+            level=DIFF_LEVEL.FILE,
+            log_dict=log_dict,
+            time_key=SELECTION_TIME_KEY_FILE_LEVEL,
+            diff_source=diff_source,
+        )
+        fallback.degraded_to_file = True
+        fallback.degraded_from_unresolved = bool(result.unresolved_files)
+        fallback.unresolved_files = result.unresolved_files
+        return fallback
+
+    if result.unresolved_files:
+        file_level = run_rts(
+            level=DIFF_LEVEL.FILE,
+            log_dict=log_dict,
+            time_key=SELECTION_TIME_KEY_FILE_LEVEL,
+            diff_source=diff_source,
+            files_to_select=set(result.unresolved_files),
+        )
+        result.affected_tests = sorted(
+            set(result.affected_tests) | set(file_level.affected_tests)
+        )
+        result.degraded_to_file = True
+        result.degraded_from_unresolved = True
+    return result

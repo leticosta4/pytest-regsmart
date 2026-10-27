@@ -266,7 +266,8 @@ def test_function_level_module_constant_change_degrades_to_file_level(selection_
     assert _ran_nodeids(out) == ["test_extra.py::test_alpha"]
     assert any("test_extra.py::test_value FAILED" in line for line in out.outlines)
     assert any(
-        "Function-level selection left 1 file(s) unresolved (extra.py)" in x
+        "Function-level selection left 1 file(s) unresolved (extra.py); adding "
+        "file-level dependents to the function-level selection" in x
         for x in out.outlines
     )
 
@@ -313,7 +314,7 @@ def test_function_level_whole_function_deletion_degrades_to_file_level(selection
         "test_multi.py::test_beta",
         "test_multi.py::test_gamma",
     ]
-    assert any("falling back to file-level selection" in x for x in out.outlines)
+    assert any("adding file-level dependents" in x for x in out.outlines)
 
 
 def test_deleted_module_selects_tests_that_import_it(selection_project):
@@ -382,6 +383,53 @@ def test_function_level_deleted_statement_selects_dependent_test(selection_proje
         "test_unrelated_calculation.py::test_unrelated_calculation" in x
         for x in out.outlines
     )
+
+
+def test_function_level_deleted_last_function_after_class_is_selected(selection_project):
+    pytester, repo = selection_project
+    _commit_new_file(
+        repo,
+        "lib.py",
+        "class Calc:\n"
+        "    def value(self):\n"
+        "        return 1\n\n\n"
+        "def other():\n"
+        "    return 2\n\n\n"
+        "PAD_A = 1\nPAD_B = 2\nPAD_C = 3\nPAD_D = 4\nPAD_E = 5\n\n"
+        "def last():\n"
+        "    return 3\n",
+    )
+    _commit_new_file(
+        repo,
+        "test_lib.py",
+        "import lib\n\n"
+        "def test_last():\n    assert lib.last() == 3\n\n"
+        "def test_other():\n    assert lib.other() == 2\n",
+    )
+    _commit_new_file(
+        repo,
+        "test_unrelated_lib.py",
+        "def test_unrelated_lib():\n    assert True\n",
+    )
+    _change(
+        repo,
+        "lib.py",
+        "class Calc:\n"
+        "    def value(self):\n"
+        "        return 1\n\n\n"
+        "def other():\n"
+        "    return 20\n\n\n"
+        "PAD_A = 1\nPAD_B = 2\nPAD_C = 3\nPAD_D = 4\nPAD_E = 5\n\n",
+    )
+
+    out = pytester.runpytest(
+        "-v", "--regsmart", "--diff-level=function", "--no-rank"
+    )
+
+    out.assert_outcomes(passed=0, failed=2)
+    assert any("test_lib.py::test_last FAILED" in x for x in out.outlines)
+    assert any("test_lib.py::test_other FAILED" in x for x in out.outlines)
+    assert not any("test_unrelated_lib.py::test_unrelated_lib" in x for x in out.outlines)
 
 
 def test_diff_level_ini_option_used_when_cli_absent(selection_project):
