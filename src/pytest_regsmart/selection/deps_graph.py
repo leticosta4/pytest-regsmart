@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import importlib.util
 import logging
 import os
 from collections import defaultdict
@@ -94,10 +96,25 @@ def _resolve_qualified_function_target(
     graph: CallGraphVisitor,
     function_nodes: FunctionNodes,
     stub_modules: dict[str, str],
+    exports: dict[tuple[str, str], str] | None = None,
 ) -> str | None:
     """Resolve a qualified public name to a function node without name-only matching."""
     if target_name in function_nodes:
         return target_name
+
+    if exports:
+        # Walk module and symbol bindings one attribute at a time. A binding
+        # can point to a re-exported function or to another module.
+        parts = target_name.split(".")
+        for module_end in range(len(parts) - 1, 0, -1):
+            module_name = ".".join(parts[:module_end])
+            if module_name not in {m for m, _ in exports}:
+                continue
+            current = module_name
+            for part in parts[module_end:]:
+                current = exports.get((current, part), f"{current}.{part}")
+            if current in function_nodes:
+                return current
 
     parts = target_name.split(".")
     # Start at the longest known module prefix, then follow each binding in
@@ -136,11 +153,111 @@ def _resolve_qualified_function_target(
                 nested = ".".join([next_module, *symbol_path[1:]])
                 if nested != target_name:
                     resolved = _resolve_qualified_function_target(
-                        nested, graph, function_nodes, stub_modules
+                        nested, graph, function_nodes, stub_modules, exports
                     )
                     if resolved is not None:
                         return resolved
     return None
+
+
+def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
+    """Index module exports and import aliases once for qualified-call lookup."""
+    modules = {
+        _normalize_pyan_module_name(name): path
+        for name, path in graph.module_to_filename.items()
+        if not path.endswith(".pyi")
+    }
+    bindings: dict[tuple[str, str], str] = {}
+    stars: list[tuple[str, str]] = []
+    explicit_exports: dict[str, set[str]] = {}
+
+    def dotted_name(node: ast.AST) -> str | None:
+        parts = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            return ".".join([node.id, *reversed(parts)])
+        return None
+
+    for module, path in modules.items():
+        try:
+            with open(path, encoding="utf-8") as source:
+                tree = ast.parse(source.read(), filename=path)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        package = module if os.path.basename(path) == "__init__.py" else module.rpartition(".")[0]
+        for statement in tree.body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bindings[(module, statement.name)] = f"{module}.{statement.name}"
+            elif isinstance(statement, ast.Import):
+                for alias in statement.names:
+                    bound = alias.asname or alias.name.split(".")[0]
+                    target = alias.name if alias.asname else alias.name.split(".")[0]
+                    bindings[(module, bound)] = target
+            elif isinstance(statement, ast.ImportFrom):
+                try:
+                    imported_module = importlib.util.resolve_name(
+                        "." * statement.level + (statement.module or ""), package
+                    ) if statement.level else (statement.module or "")
+                except (ImportError, ValueError):
+                    continue
+                for alias in statement.names:
+                    if alias.name == "*":
+                        stars.append((module, imported_module))
+                        continue
+                    target_module = f"{imported_module}.{alias.name}" if imported_module else alias.name
+                    target = (target_module if target_module in modules
+                              else f"{imported_module}.{alias.name}" if imported_module
+                              else alias.name)
+                    bindings[(module, alias.asname or alias.name)] = target
+            elif isinstance(statement, ast.Assign):
+                value = dotted_name(statement.value)
+                if value is None:
+                    continue
+                target = value
+                first, dot, remainder = value.partition(".")
+                if dot:
+                    target = bindings.get((module, first), first) + "." + remainder
+                for item in statement.targets:
+                    if isinstance(item, ast.Name):
+                        bindings[(module, item.id)] = target
+            elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+                value = dotted_name(statement.value) if statement.value is not None else None
+                if value:
+                    bindings[(module, statement.target.id)] = value
+        for statement in tree.body:
+            if isinstance(statement, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in statement.targets
+            ):
+                try:
+                    value = ast.literal_eval(statement.value)
+                    if isinstance(value, (list, tuple, set)) and all(isinstance(x, str) for x in value):
+                        explicit_exports[module] = set(value)
+                except (ValueError, TypeError):
+                    pass
+
+    # Include package submodules and expand star imports to a fixed point so
+    # chains of ``from . import *`` work regardless of file visitation order.
+    for module in modules:
+        parent, _, child = module.rpartition(".")
+        if parent:
+            bindings.setdefault((parent, child), module)
+    for _ in range(len(modules) + 1):
+        changed = False
+        for destination, source in stars:
+            names = explicit_exports.get(source)
+            if names is None:
+                names = {name for mod, name in bindings if mod == source and not name.startswith("_")}
+            for name in names:
+                target = bindings.get((source, name), f"{source}.{name}")
+                if bindings.get((destination, name)) != target:
+                    bindings[(destination, name)] = target
+                    changed = True
+        if not changed:
+            break
+    return bindings
 
 
 def _extract_function_nodes(
@@ -306,6 +423,7 @@ def _build_function_dependency_graph(
                 function_dependencies[function_name].add(dependency_name)
 
     stub_modules = _stub_modules_by_public_name(graph)
+    export_index = _build_export_index(graph)
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
             continue
@@ -314,7 +432,7 @@ def _build_function_dependency_graph(
             continue
         # Resolve only qualified calls that pyan did not already represent.
         target = _resolve_qualified_function_target(
-            qualified_target, graph, function_nodes, stub_modules
+            qualified_target, graph, function_nodes, stub_modules, export_index
         )
         if target is not None:
             function_dependencies[caller].add(target)

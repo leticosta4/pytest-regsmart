@@ -548,7 +548,11 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
 
 def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path):
     _write(tmp_path, "networkx/__init__.py", "from . import bipartite\nfrom .bipartite import *\n")
-    _write(tmp_path, "networkx/bipartite/__init__.py", "from .basic import *\n")
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .basic import *\nfrom .algorithms import clustering\n",
+    )
     _write(
         tmp_path,
         "networkx/bipartite/basic.py",
@@ -557,7 +561,7 @@ def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path)
     )
     _write(
         tmp_path,
-        "networkx/bipartite/clustering.py",
+        "networkx/bipartite/algorithms.py",
         "from .basic import is_bipartite\n"
         "def clustering(graph):\n    return is_bipartite(graph)\n",
     )
@@ -576,10 +580,10 @@ def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path)
     assert graph.dependents["networkx.bipartite.basic.is_bipartite"] == {
         "tests.test_bipartite.test_root_reexport",
         "tests.test_bipartite.test_submodule_reexport",
-        "networkx.bipartite.clustering.clustering",
+        "networkx.bipartite.algorithms.clustering",
     }
     assert "tests.test_bipartite.test_intermediate_algorithm" in graph.dependents[
-        "networkx.bipartite.clustering.clustering"
+        "networkx.bipartite.algorithms.clustering"
     ]
 
 
