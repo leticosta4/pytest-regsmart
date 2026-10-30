@@ -546,6 +546,118 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
     )
 
 
+def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
+    _write(
+        tmp_path,
+        "pkg/api.py",
+        "class Base:\n"
+        "    def run(self):\n"
+        "        return self.compute()\n"
+        "    def compute(self):\n"
+        "        return 0\n"
+        "class Child(Base):\n"
+        "    def compute(self):\n"
+        "        return 1\n"
+        "class Unrelated:\n"
+        "    def compute(self):\n"
+        "        return 2\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_api.py",
+        "from pkg.api import Child\n"
+        "def test_inherited_api():\n"
+        "    instance = Child()\n"
+        "    assert instance.run() == 1\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "pkg.api.Base.run" in graph.dependents["pkg.api.Child.compute"]
+    assert "tests.test_api.test_inherited_api" in graph.dependents[
+        "pkg.api.Base.run"
+    ]
+    assert "pkg.api.Unrelated.compute" not in graph.dependents
+
+
+def test_function_graph_resolves_inline_instance_of_inherited_api(tmp_path):
+    _write(
+        tmp_path,
+        "pkg/api.py",
+        "class Base:\n"
+        "    def run(self):\n"
+        "        return self.compute()\n"
+        "class Child(Base):\n"
+        "    def compute(self):\n"
+        "        return 1\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_api.py",
+        "from pkg.api import Child\n"
+        "def test_inline_instance():\n"
+        "    assert Child().run() == 1\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_api.test_inline_instance" in graph.dependents[
+        "pkg.api.Base.run"
+    ]
+
+
+def test_function_graph_tracks_inherited_public_api_without_override(tmp_path):
+    _write(
+        tmp_path,
+        "pkg/api.py",
+        "class Base:\n"
+        "    def fit(self, value):\n"
+        "        return self._validate(value)\n"
+        "    def _validate(self, value):\n"
+        "        return value\n"
+        "    @classmethod\n"
+        "    def create(cls):\n"
+        "        return cls()\n"
+        "class Child(Base):\n"
+        "    pass\n"
+        "class Unrelated:\n"
+        "    def fit(self, value):\n"
+        "        return value\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_api.py",
+        "from pkg.api import Child\n"
+        "def test_constructed_subclass():\n"
+        "    instance = Child()\n"
+        "    instance.fit(1)\n"
+        "def test_classmethod_constructed_subclass():\n"
+        "    Child.create().fit(1)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    def affected_by(node: str) -> set[str]:
+        affected = set()
+        pending = [node]
+        while pending:
+            current = pending.pop()
+            for dependent in graph.dependents.get(current, set()):
+                if dependent not in affected:
+                    affected.add(dependent)
+                    pending.append(dependent)
+        return {item for item in affected if item.startswith("tests.")}
+
+    assert affected_by("pkg.api.Base.fit") == {
+        "tests.test_api.test_constructed_subclass",
+        "tests.test_api.test_classmethod_constructed_subclass",
+    }
+    assert "pkg.api.Unrelated" not in graph.dependents.get("pkg.api.Base", set())
+
+
 def test_get_function_dependency_graph_keys_are_unit_ids(git_repo):
     _build_function_sample_project(git_repo)
 

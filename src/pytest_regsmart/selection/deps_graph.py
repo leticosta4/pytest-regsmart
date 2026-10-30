@@ -12,6 +12,7 @@ from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
 from .git_manager import resolve_repo
+from .dynamic_dispatch import get_dynamic_method_dependencies
 from .models import (
     _KEPT_FLAVORS,
     DependenciesMap,
@@ -295,6 +296,16 @@ def _build_function_dependency_graph(
         )
         if target is not None:
             function_dependencies[caller].add(target)
+
+    # pyan resolves the statically visible method on ``self``/``cls``. Add
+    # conservative dynamic-dispatch edges for overrides in known subclasses,
+    # and resolve calls on locals that are directly constructed in a function.
+    # This is deliberately a single-function analysis: it does not propagate
+    # inferred types across calls or guess from method names alone.
+    for caller, targets in get_dynamic_method_dependencies(
+        python_files, graph, function_nodes
+    ).items():
+        function_dependencies[caller].update(targets)
 
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
