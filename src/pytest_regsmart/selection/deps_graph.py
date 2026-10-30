@@ -328,7 +328,7 @@ def _build_function_dependency_graph(
         dynamic_dependencies = get_dynamic_method_dependencies(
             python_files, graph, function_nodes, resolve_imported_class
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _logger.warning(
             "regsmart: ignoring inheritance-based dependencies (%s)",
             type(exc).__name__,
