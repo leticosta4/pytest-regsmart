@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import os
 from collections import defaultdict, deque
+from collections.abc import Callable
 
 from pyan.analyzer import CallGraphVisitor
 from pyan.node import Flavor
@@ -14,24 +15,29 @@ def _module_name(module: str) -> str:
     return module.replace(".__init__.", ".").removesuffix(".__init__")
 
 
-def _imports(tree: ast.Module, module: str) -> dict[str, str]:
-    imports = {}
-    for statement in tree.body:
-        if isinstance(statement, ast.Import):
-            for alias in statement.names:
-                imports[alias.asname or alias.name.split(".")[0]] = (
-                    alias.name if alias.asname else alias.name.split(".")[0]
-                )
-        elif isinstance(statement, ast.ImportFrom):
-            if statement.level:
-                package = module.split(".")[:-1]
-                package = package[: max(0, len(package) - statement.level + 1)]
-                base = [*package, *([statement.module] if statement.module else [])]
-            else:
-                base = [statement.module] if statement.module else []
-            for alias in statement.names:
-                imports[alias.asname or alias.name] = ".".join([*base, alias.name])
-    return imports
+def _import_bindings(
+    statement: ast.Import | ast.ImportFrom,
+    module: str,
+    is_package: bool,
+) -> dict[str, str]:
+    if isinstance(statement, ast.Import):
+        return {
+            alias.asname or alias.name.split(".")[0]: (
+                alias.name if alias.asname else alias.name.split(".")[0]
+            )
+            for alias in statement.names
+        }
+
+    if statement.level:
+        package = module.split(".") if is_package else module.split(".")[:-1]
+        package = package[: max(0, len(package) - statement.level + 1)]
+        base = [*package, *([statement.module] if statement.module else [])]
+    else:
+        base = [statement.module] if statement.module else []
+    return {
+        alias.asname or alias.name: ".".join([*base, alias.name])
+        for alias in statement.names
+    }
 
 
 class _DynamicDispatchVisitor(ast.NodeVisitor):
@@ -43,6 +49,8 @@ class _DynamicDispatchVisitor(ast.NodeVisitor):
         bases: dict[str, set[str]],
         descendants: dict[str, set[str]],
         function_nodes: FunctionNodes,
+        resolve_imported_class: Callable[[str, str, str | None], str | None],
+        is_package: bool,
     ) -> None:
         self.module = module
         self.imports = imports
@@ -50,9 +58,12 @@ class _DynamicDispatchVisitor(ast.NodeVisitor):
         self.bases = bases
         self.descendants = descendants
         self.function_nodes = function_nodes
+        self.resolve_imported_class = resolve_imported_class
+        self.is_package = is_package
         self.class_stack: list[str] = []
         self.function_stack: list[str] = []
         self.local_types: dict[str, str] = {}
+        self.local_imports: dict[str, str] = {}
         self.dependencies: defaultdict[str, set[str]] = defaultdict(set)
 
     def _resolve_class(self, expression: ast.AST) -> str | None:
@@ -60,14 +71,19 @@ class _DynamicDispatchVisitor(ast.NodeVisitor):
         if name in self.classes:
             return name
         head, _, tail = name.partition(".")
-        imported = self.imports.get(head)
+        imported = self.local_imports.get(head, self.imports.get(head))
         candidate = (
             f"{imported}.{tail}"
             if tail and imported
-            else self.imports.get(name)
+            else self.local_imports.get(name, self.imports.get(name))
         )
         if candidate in self.classes:
             return candidate
+        if not tail:
+            scope = self.function_stack[-1] if self.function_stack else None
+            resolved = self.resolve_imported_class(self.module, name, scope)
+            if resolved:
+                return resolved
         candidate = f"{self.module}.{name}"
         return candidate if candidate in self.classes else None
 
@@ -103,11 +119,26 @@ class _DynamicDispatchVisitor(ast.NodeVisitor):
             self.generic_visit(node)
             return
         previous_types = self.local_types
+        previous_imports = self.local_imports
         self.local_types = {}
+        self.local_imports = {}
         self.function_stack.append(function)
         self.generic_visit(node)
         self.function_stack.pop()
         self.local_types = previous_types
+        self.local_imports = previous_imports
+
+    def visit_Import(self, node: ast.Import) -> None:
+        if self.function_stack:
+            self.local_imports.update(
+                _import_bindings(node, self.module, self.is_package)
+            )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if self.function_stack:
+            self.local_imports.update(
+                _import_bindings(node, self.module, self.is_package)
+            )
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if isinstance(node.value, ast.Call):
@@ -169,6 +200,7 @@ def get_dynamic_method_dependencies(
     python_files: list[str],
     graph: CallGraphVisitor,
     function_nodes: FunctionNodes,
+    resolve_imported_class: Callable[[str, str, str | None], str | None],
 ) -> dict[str, set[str]]:
     """Add function dependencies that follow known inheritance relationships."""
     module_by_path = {
@@ -225,13 +257,20 @@ def get_dynamic_method_dependencies(
                 tree = ast.parse(source.read(), filename=filepath)
         except (OSError, UnicodeDecodeError, SyntaxError):
             continue
+        is_package = os.path.basename(filepath) == "__init__.py"
+        module_imports = {}
+        for statement in tree.body:
+            if isinstance(statement, (ast.Import, ast.ImportFrom)):
+                module_imports.update(_import_bindings(statement, module, is_package))
         visitor = _DynamicDispatchVisitor(
             module,
-            _imports(tree, module),
+            module_imports,
             set(class_nodes),
             bases,
             descendants,
             function_nodes,
+            resolve_imported_class,
+            is_package,
         )
         visitor.visit(tree)
         for caller, targets in visitor.dependencies.items():
