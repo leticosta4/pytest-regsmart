@@ -100,23 +100,46 @@ def _resolve_qualified_function_target(
         return target_name
 
     parts = target_name.split(".")
+    # Start at the longest known module prefix, then follow each binding in
+    # that module's scope.  The previous implementation only accepted a
+    # single symbol after the module, which lost calls such as
+    # ``pkg.submodule.function`` when ``submodule`` was re-exported.
     for module_end in range(len(parts) - 1, 0, -1):
         module_name = ".".join(parts[:module_end])
         symbol_path = parts[module_end:]
-        if len(symbol_path) != 1:
-            continue
-
         scope_names = [stub_modules.get(module_name), module_name]
         for scope_name in scope_names:
             scope = graph.scopes.get(scope_name) if scope_name else None
-            binding = scope.defs.get(symbol_path[0]) if scope is not None else None
+            if scope is None:
+                continue
+            binding = scope.defs.get(symbol_path[0])
             if binding is None:
                 continue
             resolved = _resolve_imported_function(
                 binding, graph, function_nodes, stub_modules
             )
-            if resolved is not None:
+            if resolved is not None and len(symbol_path) == 1:
                 return resolved
+
+            # A package may bind an attribute to an imported submodule (or a
+            # module alias). Continue from that module's scope so chains of
+            # package re-exports are resolved without scanning source files.
+            next_module = None
+            if binding.flavor == Flavor.MODULE:
+                next_module = _normalize_pyan_module_name(binding.get_name())
+            elif binding.flavor == Flavor.IMPORTEDITEM:
+                next_module = _normalize_pyan_module_name(
+                    f"{binding.namespace}.{binding.name}"
+                    if binding.namespace else binding.name
+                )
+            if next_module is not None:
+                nested = ".".join([next_module, *symbol_path[1:]])
+                if nested != target_name:
+                    resolved = _resolve_qualified_function_target(
+                        nested, graph, function_nodes, stub_modules
+                    )
+                    if resolved is not None:
+                        return resolved
     return None
 
 

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
+- Function-level selection now follows qualified calls through imported submodules, aliases, package re-exports, and `import *` bindings to the original function. Tests that reach a changed function through a re-export or an intermediate algorithm are therefore included.
 - With `pytest-xdist`, the summary now includes selection and prioritization timings, the comparison branch, and warnings collected by workers. Timings report the slowest worker duration.
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16
