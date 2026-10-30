@@ -11,8 +11,8 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
-from .git_manager import resolve_repo
 from .dynamic_dispatch import get_dynamic_method_dependencies
+from .git_manager import resolve_repo
 from .models import (
     _KEPT_FLAVORS,
     DependenciesMap,
