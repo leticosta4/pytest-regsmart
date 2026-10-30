@@ -105,6 +105,10 @@ def _get_affected_tests_at_function_level(
 ) -> list[str]:
     changed_function_ids = line_diff_match_function_ids(diff_result, deps_graph)
     affected_function_ids = _get_affected_nodes(changed_function_ids, deps_graph)
+    # Parent-side static analysis cannot observe code executed by a nested
+    # pytest collection. Keep such tests as a conservative fallback so changes
+    # to fixtures, hooks, or plugin behavior used only in the child are covered.
+    affected_function_ids.update(deps_graph.subprocess_tests)
 
     # pytest filters collected items by their nodeid. A function graph id uses
     # dotted Python names, while pytest uses ``path.py::Class::test``.
