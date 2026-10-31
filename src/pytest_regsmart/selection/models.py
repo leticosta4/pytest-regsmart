@@ -69,6 +69,7 @@ class DependencyGraph:
     dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
     function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
     functions_by_file: FunctionsByFile = field(default_factory=dict)
+    subprocess_tests: set[str] = field(default_factory=set)
 
 
 class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):

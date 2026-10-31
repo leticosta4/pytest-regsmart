@@ -500,6 +500,50 @@ def test_get_function_dependency_graph_end_to_end(git_repo):
     }
 
 
+def test_function_graph_records_tests_that_run_nested_pytest(tmp_path):
+    _write(tmp_path, "pkg/service.py", "def changed():\n    return 1\n")
+    _write(
+        tmp_path,
+        "tests/test_nested.py",
+        "class TestDistribution:\n"
+        "    def test_child_pytest(self, pytester):\n"
+        "        pytester.runpytest_subprocess('--help')\n"
+        "\n"
+        "    def test_regular(self):\n"
+        "        assert True\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert graph.subprocess_tests == {"tests.test_nested.TestDistribution.test_child_pytest"}
+
+
+def test_function_graph_keeps_pyan_edges_if_dynamic_pass_fails(
+    tmp_path, monkeypatch, caplog
+):
+    _write(tmp_path, "pkg/service.py", "def run():\n    return 1\n")
+    _write(
+        tmp_path,
+        "tests/test_service.py",
+        "from pkg.service import run\n"
+        "def test_run():\n"
+        "    run()\n",
+    )
+
+    def fail_dynamic_pass(*args, **kwargs):
+        raise RuntimeError("AST pass failed")
+
+    monkeypatch.setattr(
+        deps_graph, "get_dynamic_method_dependencies", fail_dynamic_pass
+    )
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert graph.dependents["pkg.service.run"] == {"tests.test_service.test_run"}
+    assert "ignoring inheritance-based dependencies (RuntimeError)" in caplog.text
+
+
 def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
     _write(tmp_path, "pkg/__init__.py", "def __getattr__(name):\n    raise AttributeError(name)\n")
     _write(tmp_path, "pkg/__init__.pyi", "from .feature.core import griffinlim as griffinlim\n")
