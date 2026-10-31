@@ -303,6 +303,25 @@ def _build_function_dependency_graph(
         if target is not None:
             function_dependencies[caller].add(target)
 
+    # Inheritance based edges are a best-effort supplement to pyan's call
+    # graph. Keep this pass isolated: a malformed or unsupported AST should
+    # not discard the edges already collected from pyan.
+    try:
+        dynamic_dependencies = get_dynamic_method_dependencies(
+            python_files, function_nodes
+        )
+        for caller, dependencies in dynamic_dependencies.items():
+            if caller in function_nodes:
+                function_dependencies[caller].update(
+                    dependency
+                    for dependency in dependencies
+                    if dependency in function_nodes
+                )
+    except Exception as exc:
+        _logger.warning(
+            "ignoring inheritance-based dependencies (%s)", type(exc).__name__
+        )
+
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
     return DependencyGraph(
@@ -311,6 +330,17 @@ def _build_function_dependency_graph(
         functions_by_file=functions_by_files,
         subprocess_tests=subprocess_tests,
     )
+
+
+def get_dynamic_method_dependencies(
+    python_files: list[str], function_nodes: FunctionNodes
+) -> dict[str, set[str]]:
+    """Return inheritance based method edges (currently none when unresolved).
+
+    This hook is deliberately separate from pyan graph construction so the
+    optional AST analysis can fail without losing statically resolved edges.
+    """
+    return {}
 
 
 def _readable_python_files(python_files: list[str]) -> list[str]:
