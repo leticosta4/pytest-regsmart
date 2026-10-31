@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.2] - 2026-10-31
 
 ### Security
+- Bump filelock from version 3.32.3 to 4.2.6 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%filelock))
 - Bump virtualenv from version 21.14.9 to 21.14.13 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump gitpython from 3.2.0 to 3.2.1 ([CVEs](https://github.com/leticosta4/pytest-regsmart/security/dependabot/20))
 ## [0.8.1] - 2026-10-26
