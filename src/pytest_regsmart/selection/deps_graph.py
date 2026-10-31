@@ -317,7 +317,7 @@ def _build_function_dependency_graph(
                     for dependency in dependencies
                     if dependency in function_nodes
                 )
-    except Exception as exc:
+    except Exception as exc:  #noqa: BLE001
         _logger.warning(
             "ignoring inheritance-based dependencies (%s)", type(exc).__name__
         )
