@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.1] - 2026-10-26
 
+### Security
+- Bump gitpython from 3.2.0 to 3.2.1 ([CVEs](https://github.com/leticosta4/pytest-regsmart/security/dependabot/20))
+## [0.8.1] - 2026-10-26
+
 ### Added
 - Add remote branches fallback to `--local-diff` flag when value is True
 ### Security
