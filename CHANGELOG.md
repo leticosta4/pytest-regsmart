@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+### Fixed
+- Function-level selection now resolves qualified calls that go through a test helper module imported by its bare name (`try: from . import generic as g` / `except ImportError: import generic as g`) and through modules imported inside another module (for example `g.trimesh.load(...)`), so tests that only reach the project through such helpers are linked to the code they exercise.
+- A project module passed as a call argument (for example `doctest.testmod(pkg.module)`) now makes the caller depend on the functions and classes of that module.
+
 ## [0.9.0] - 2026-11-01
 
 ### Fixed

@@ -121,6 +121,151 @@ def _resolve_qualified_function_target(
     return None
 
 
+_MAX_MODULE_CHAIN_DEPTH = 8
+
+
+def _module_scope(graph: CallGraphVisitor, stub_modules: dict[str, str], module_name: str):
+    for scope_name in (stub_modules.get(module_name), module_name, f"{module_name}.__init__"):
+        if scope_name and scope_name in graph.scopes:
+            return graph.scopes[scope_name]
+    return None
+
+
+def _project_modules(graph: CallGraphVisitor) -> dict[str, str]:
+    """Map analyzed (non-stub) module names to their file paths."""
+    return {
+        _normalize_pyan_module_name(module_name): filename
+        for module_name, filename in graph.module_to_filename.items()
+        if not filename.endswith(".pyi")
+    }
+
+
+def _resolve_through_module_bindings(
+    module_name: str,
+    attributes: list[str],
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    stub_modules: dict[str, str],
+    depth: int = 0,
+) -> str | None:
+    """Resolve ``module.attr1.attr2...`` following modules bound inside modules.
+
+    ``tests/generic.py`` doing ``import trimesh`` makes ``generic.trimesh`` a
+    module, so ``generic.trimesh.load`` continues in ``trimesh``'s scope. Only
+    module bindings are followed; the last attribute must resolve to a known
+    function, method or class node (no name-based guessing).
+    """
+    if not attributes or depth > _MAX_MODULE_CHAIN_DEPTH:
+        return None
+    scope = _module_scope(graph, stub_modules, module_name)
+    binding = scope.defs.get(attributes[0]) if scope is not None else None
+    if binding is None:
+        return None
+    if len(attributes) == 1:
+        return _resolve_imported_function(binding, graph, function_nodes, stub_modules)
+    if binding.flavor == Flavor.MODULE:
+        next_module = _normalize_pyan_module_name(binding.get_name())
+    elif binding.flavor == Flavor.IMPORTEDITEM and binding.namespace is not None:
+        next_module = f"{_normalize_pyan_module_name(binding.namespace)}.{binding.name}"
+    else:
+        return None
+    if next_module == module_name:
+        return None
+    return _resolve_through_module_bindings(
+        next_module, attributes[1:], graph, function_nodes, stub_modules, depth + 1
+    )
+
+
+def _caller_package(caller: str, project_modules: dict[str, str]) -> str | None:
+    """Package that contains the module defining ``caller`` (longest prefix match)."""
+    parts = caller.split(".")
+    for end in range(len(parts) - 1, 0, -1):
+        module_name = ".".join(parts[:end])
+        filename = project_modules.get(module_name)
+        if filename is None:
+            continue
+        if os.path.basename(filename) == "__init__.py":
+            return module_name
+        return module_name.rpartition(".")[0]
+    return None
+
+
+def _resolve_qualified_via_module_chain(
+    target_name: str,
+    caller: str,
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    stub_modules: dict[str, str],
+    project_modules: dict[str, str],
+) -> str | None:
+    """Fallback for qualified calls that ``_resolve_qualified_function_target`` misses.
+
+    1. ``pkg.mod.attr...`` where the path continues through modules imported
+       inside ``pkg.mod`` (e.g. ``helper.trimesh.load``).
+    2. A root name that is not a project module but matches a module next to
+       the caller, as with ``try: from . import generic as g`` /
+       ``except ImportError: import generic as g`` in test packages: pyan keeps
+       the absolute name ``generic``, while the module is ``tests.generic``.
+    """
+    parts = target_name.split(".")
+    for end in range(len(parts) - 1, 0, -1):
+        module_name = ".".join(parts[:end])
+        if module_name in project_modules:
+            return _resolve_through_module_bindings(
+                module_name, parts[end:], graph, function_nodes, stub_modules
+            )
+
+    package = _caller_package(caller, project_modules)
+    if not package:
+        return None
+    for end in range(len(parts) - 1, 0, -1):
+        module_name = f"{package}.{'.'.join(parts[:end])}"
+        if module_name in project_modules:
+            return _resolve_through_module_bindings(
+                module_name, parts[end:], graph, function_nodes, stub_modules
+            )
+    return None
+
+
+def _resolve_module_reference(
+    reference: str,
+    caller: str,
+    graph: CallGraphVisitor,
+    stub_modules: dict[str, str],
+    project_modules: dict[str, str],
+) -> str | None:
+    """Resolve a dotted module reference to an analyzed project module name."""
+    parts = reference.split(".")
+
+    def follow(module_name: str, attributes: list[str]) -> str | None:
+        for depth, attribute in enumerate(attributes):
+            if depth > _MAX_MODULE_CHAIN_DEPTH:
+                return None
+            scope = _module_scope(graph, stub_modules, module_name)
+            binding = scope.defs.get(attribute) if scope is not None else None
+            if binding is not None and binding.flavor == Flavor.MODULE:
+                module_name = _normalize_pyan_module_name(binding.get_name())
+            elif binding is not None and binding.flavor == Flavor.IMPORTEDITEM and binding.namespace is not None:
+                module_name = f"{_normalize_pyan_module_name(binding.namespace)}.{binding.name}"
+            elif f"{module_name}.{attribute}" in project_modules:
+                module_name = f"{module_name}.{attribute}"  # submodule attribute
+            else:
+                return None
+        return module_name if module_name in project_modules else None
+
+    for end in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:end])
+        if module_name in project_modules:
+            return follow(module_name, parts[end:])
+    package = _caller_package(caller, project_modules)
+    if package:
+        for end in range(len(parts), 0, -1):
+            module_name = f"{package}.{'.'.join(parts[:end])}"
+            if module_name in project_modules:
+                return follow(module_name, parts[end:])
+    return None
+
+
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
@@ -284,6 +429,7 @@ def _build_function_dependency_graph(
                 function_dependencies[function_name].add(dependency_name)
 
     stub_modules = _stub_modules_by_public_name(graph)
+    project_modules = _project_modules(graph)
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
             continue
@@ -294,8 +440,29 @@ def _build_function_dependency_graph(
         target = _resolve_qualified_function_target(
             qualified_target, graph, function_nodes, stub_modules
         )
+        if target is None:
+            target = _resolve_qualified_via_module_chain(
+                qualified_target, caller, graph, function_nodes, stub_modules,
+                project_modules,
+            )
         if target is not None:
             function_dependencies[caller].add(target)
+
+    # A project module passed as an argument (``doctest.testmod(pkg.mod)``,
+    # ``inspect.getmembers(pkg.mod)``) is exercised as a whole by the callee, so
+    # the caller depends on every function and class defined in that module.
+    for caller, reference in graph.module_arguments:
+        if caller not in function_nodes:
+            continue
+        module_name = _resolve_module_reference(
+            reference, caller, graph, stub_modules, project_modules
+        )
+        if module_name is None:
+            continue
+        module_file = os.path.relpath(project_modules[module_name], working_dir)
+        function_dependencies[caller].update(
+            node for node in functions_by_files.get(module_file, ()) if node != caller
+        )
 
     # pyan resolves the statically visible method on ``self``/``cls``. Add
     # conservative dynamic-dispatch edges for overrides in known subclasses,
