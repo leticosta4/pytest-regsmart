@@ -203,6 +203,8 @@ ranking_replay =
 ranking_level = put
 ranking_hist_len = 50
 ranking_seed = 0
+graph_cache = true
+graph_cache_dir =
 ```
 
 ## How Regression Test Selection (RTS) works
@@ -215,6 +217,19 @@ When `--regsmart` is used, `pytest-regsmart` runs a Regression Test Selection st
    - by default (committed mode) it collects the files changed between the merge-base and `HEAD` and ignores untracked files; with `--local-diff` it collects modified (`staged` + `unstaged`) and untracked files from the working tree instead. If the repository has no commits yet, only untracked files are considered.
 
 2. **Build a dependency graph when changes exist.** If a diff is detected, [`pyan3`](https://pypi.org/project/pyan3/) parses every `*.py` file in the repository (excluding `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `site-packages`, `.pixi`, and directories ending in `.egg-info`) and builds a dependency graph whose granularity follows `--diff-level`: a function-level call graph when `function` (default), or a module-level import graph when `file`. The graph is then inverted so that, for each node, it knows *which* other nodes depend on it.
+
+   Dependency graphs are cached when pytest's cache provider is available. The cache fingerprint includes source contents, the plugin's Python code, the graph level, Python minor version, and `pyan3` version. Concurrent xdist workers share a lock so only one builds a cold entry. Set `graph_cache = false` or `REGSMART_GRAPH_CACHE=0` to disable caching; set `graph_cache_dir` or `REGSMART_GRAPH_CACHE_DIR` to choose a directory. For CI, persist that directory between runs, for example:
+
+   ```yaml
+   env:
+     REGSMART_GRAPH_CACHE_DIR: ${{ github.workspace }}/.regsmart-graph-cache
+   steps:
+     - uses: actions/cache@v4
+       with:
+         path: .regsmart-graph-cache
+         key: regsmart-graph-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('**/*.py', '**/*.pyi') }}
+         restore-keys: regsmart-graph-${{ runner.os }}-py${{ matrix.python-version }}-
+   ```
 3. **Propagate changes transitively.** A depth-first traversal (DFS, implemented with a LIFO stack) starts from the changed units — changed files at the `file` level, or the functions containing the changed lines at the `function` level — and walks through their dependents, collecting every test unit affected directly or indirectly: test files (files named `test_*.py` or `*_test.py`) or individual test functions, respectively.
 4. **Filter the test suite.** At the `file` level, test items whose file is not in the selected set are removed; at the `function` level, only collected items matching a selected pytest nodeid are kept. Only affected tests are actually executed. As a safety net, if the filter would remove *every* collected test (a nodeid mismatch between the graph and pytest's collection), the original list is restored and a warning is reported, instead of pytest exiting with "no tests ran".
 

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+### Added
+- Cache dependency graphs by source contents, plugin code, graph level, Python version, and pyan3 version; concurrent xdist workers coordinate builds with a lock. Configure with `graph_cache`, `graph_cache_dir`, `REGSMART_GRAPH_CACHE`, and `REGSMART_GRAPH_CACHE_DIR`.
+
 ## [0.8.2] - 2026-10-31
 
 ### Security
