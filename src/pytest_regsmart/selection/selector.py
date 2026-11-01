@@ -89,6 +89,51 @@ def _get_affected_nodes(
     return seen
 
 
+def _add_collected_fixture_edges(items: list, deps_graph: DependencyGraph) -> None:
+    """Connect pytest's resolved fixture closure to its collected test item.
+
+    Pytest has already resolved overrides, autouse fixtures and parametrized
+    fixture definitions by collection time; use that exact closure instead of
+    trying to infer fixture names or types from test annotations.
+    """
+    by_location: dict[tuple[str, str], set[str]] = {}
+    for function_id, metadata in deps_graph.function_nodes.items():
+        by_location.setdefault((os.path.normpath(metadata.filepath), function_id.rsplit(".", 1)[-1]), set()).add(function_id)
+
+    for item in items:
+        test_path = os.path.normpath(str(item.path))
+        test_name = item.nodeid.split("::")[-1].split("[")[0]
+        test_ids = by_location.get((test_path, test_name), set())
+        if not test_ids:
+            # Graph paths are relative to the repository; pytest paths may be
+            # absolute. Match by suffix while retaining the function name.
+            test_ids = {
+                fid for fid, metadata in deps_graph.function_nodes.items()
+                if metadata.filepath.endswith(test_path.replace(os.sep, "/").split("/")[-1])
+                and fid.rsplit(".", 1)[-1] == test_name
+            }
+        if not test_ids:
+            continue
+        fixtureinfo = getattr(item, "_fixtureinfo", None)
+        definitions = getattr(fixtureinfo, "name2fixturedefs", {}) or {}
+        fixture_functions = set()
+        for fixturedefs in definitions.values():
+            for fixturedef in fixturedefs or ():
+                func = getattr(fixturedef, "func", None)
+                if func is None:
+                    continue
+                code = getattr(func, "__code__", None)
+                if code is None:
+                    continue
+                try:
+                    fixture_path = os.path.relpath(code.co_filename, os.getcwd())
+                except ValueError:
+                    continue
+                fixture_functions.update(by_location.get((os.path.normpath(fixture_path), func.__name__), ()))
+        for fixture_id in fixture_functions:
+            deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
+
+
 def _get_affected_tests_at_file_level(
     diff_result: DiffResult,
     deps_graph: DependencyGraph,
@@ -155,6 +200,7 @@ def run_rts(
     log_dict: dict | None = None,
     time_key: str = SELECTION_TIME_KEY,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
 ) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
@@ -193,6 +239,8 @@ def run_rts(
         )
     
     deps_graph = get_dependency_graph(graph_level= level)
+    if level == DIFF_LEVEL.FUNCTION and items:
+        _add_collected_fixture_edges(items, deps_graph)
 
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
@@ -225,6 +273,7 @@ def run_rts_with_fallback(
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     log_dict: dict | None = None,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
 ) -> SelectionResult:
     """Run RTS and, on a suspicious empty function-level result, retry at file level.
 
@@ -232,7 +281,7 @@ def run_rts_with_fallback(
     false negative (e.g. tests calling names reexported in ``__init__.py``), so
     the file-level selection is used as a safer, less precise fallback.
     """
-    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source)
+    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source, items=items)
 
     if not _should_degrade_to_file(result, level):
         return result
@@ -242,6 +291,7 @@ def run_rts_with_fallback(
         log_dict=log_dict,
         time_key=SELECTION_TIME_KEY_FILE_LEVEL,
         diff_source=diff_source,
+        items=items,
     )
     fallback.degraded_to_file = True
     return fallback

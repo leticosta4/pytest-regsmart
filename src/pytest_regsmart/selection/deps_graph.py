@@ -296,6 +296,26 @@ def _build_function_dependency_graph(
         if target is not None:
             function_dependencies[caller].add(target)
 
+    # A number of Python operations dispatch to a method without naming it in
+    # source (attribute access, operators, iteration, context managers, ...).
+    # Represent the owning class as depending on each declared member. This
+    # keeps propagation member-specific: a changed member reaches users of
+    # instances of that class, without treating every class member as changed.
+    class_ids = {
+        node.get_name()
+        for node_group in graph.nodes.values()
+        for node in node_group
+        if node.flavor == Flavor.CLASS and node.get_name() in function_nodes
+    }
+    for class_id in class_ids:
+        class_path = function_nodes[class_id].filepath
+        for member_id, metadata in function_nodes.items():
+            if (
+                metadata.filepath == class_path
+                and member_id.startswith(f"{class_id}.")
+            ):
+                function_dependencies[class_id].add(member_id)
+
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
     return DependencyGraph(
