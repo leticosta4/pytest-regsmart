@@ -8,7 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-## [0.8.1] - 2026-10-31
+## [0.9.0] - 2026-11-01
+
+### Fixed
+- Function-level selection now retains tests that invoke pytester's `runpytest_subprocess()` or `runpytest()` helpers. The child pytest run is not visible to the parent call graph, so these tests are selected conservatively when a Python diff exists.
+- Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
+### Changed
+- Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
+## [0.8.2] - 2026-10-31
+
+### Security
+- Bump filelock from version 3.32.3 to 4.2.6 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%filelock))
+- Bump virtualenv from version 21.14.9 to 21.14.13 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
+- Bump gitpython from 3.2.0 to 3.2.1 ([CVEs](https://github.com/leticosta4/pytest-regsmart/security/dependabot/20))
+## [0.8.1] - 2026-10-26
 
 ### Added
 - Add remote branches fallback to `--local-diff` flag when value is True

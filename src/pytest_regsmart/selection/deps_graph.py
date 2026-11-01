@@ -11,6 +11,7 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
+from .dynamic_dispatch import get_dynamic_method_dependencies
 from .git_manager import resolve_repo
 from .models import (
     _KEPT_FLAVORS,
@@ -303,24 +304,45 @@ def _build_function_dependency_graph(
         if target is not None:
             function_dependencies[caller].add(target)
 
-    # Inheritance based edges are a best-effort supplement to pyan's call
-    # graph. Keep this pass isolated: a malformed or unsupported AST should
-    # not discard the edges already collected from pyan.
+    # pyan resolves the statically visible method on ``self``/``cls``. Add
+    # conservative dynamic-dispatch edges for overrides in known subclasses,
+    # and resolve calls on locals that are directly constructed in a function.
+    # This is deliberately a single-function analysis: it does not propagate
+    # inferred types across calls or guess from method names alone.
+    def resolve_imported_class(
+        module_name: str,
+        symbol_name: str,
+        local_scope: str | None,
+    ) -> str | None:
+        scope_names = (
+            local_scope,
+            stub_modules.get(module_name),
+            module_name,
+            f"{module_name}.__init__",
+        )
+        for scope_name in scope_names:
+            scope = graph.scopes.get(scope_name) if scope_name else None
+            binding = scope.defs.get(symbol_name) if scope is not None else None
+            if binding is not None:
+                resolved = _resolve_imported_function(
+                    binding, graph, function_nodes, stub_modules
+                )
+                if resolved:
+                    return resolved
+        return None
+
     try:
         dynamic_dependencies = get_dynamic_method_dependencies(
-            python_files, function_nodes
+            python_files, graph, function_nodes, resolve_imported_class
         )
-        for caller, dependencies in dynamic_dependencies.items():
-            if caller in function_nodes:
-                function_dependencies[caller].update(
-                    dependency
-                    for dependency in dependencies
-                    if dependency in function_nodes
-                )
-    except Exception as exc:  #noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         _logger.warning(
-            "ignoring inheritance-based dependencies (%s)", type(exc).__name__
+            "regsmart: ignoring inheritance-based dependencies (%s)",
+            type(exc).__name__,
         )
+    else:
+        for caller, targets in dynamic_dependencies.items():
+            function_dependencies[caller].update(targets)
 
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
@@ -330,17 +352,6 @@ def _build_function_dependency_graph(
         functions_by_file=functions_by_files,
         subprocess_tests=subprocess_tests,
     )
-
-
-def get_dynamic_method_dependencies(
-    python_files: list[str], function_nodes: FunctionNodes
-) -> dict[str, set[str]]:
-    """Return inheritance based method edges (currently none when unresolved).
-
-    This hook is deliberately separate from pyan graph construction so the
-    optional AST analysis can fail without losing statically resolved edges.
-    """
-    return {}
 
 
 def _readable_python_files(python_files: list[str]) -> list[str]:
