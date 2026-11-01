@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.9.0] - 2026-11-01
+
+### Changed
+- Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
 ## [0.8.2] - 2026-10-31
 
 ### Security
