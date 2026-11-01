@@ -281,17 +281,26 @@ def run_rts_with_fallback(
     false negative (e.g. tests calling names reexported in ``__init__.py``), so
     the file-level selection is used as a safer, less precise fallback.
     """
-    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source, items=items)
+    run_kwargs = {
+        "level": level,
+        "log_dict": log_dict,
+        "diff_source": diff_source,
+    }
+    if items is not None:
+        run_kwargs["items"] = items
+    result = run_rts(**run_kwargs)
 
     if not _should_degrade_to_file(result, level):
         return result
 
-    fallback = run_rts(
-        level=DIFF_LEVEL.FILE,
-        log_dict=log_dict,
-        time_key=SELECTION_TIME_KEY_FILE_LEVEL,
-        diff_source=diff_source,
-        items=items,
-    )
+    fallback_kwargs = {
+        "level": DIFF_LEVEL.FILE,
+        "log_dict": log_dict,
+        "time_key": SELECTION_TIME_KEY_FILE_LEVEL,
+        "diff_source": diff_source,
+    }
+    if items is not None:
+        fallback_kwargs["items"] = items
+    fallback = run_rts(**fallback_kwargs)
     fallback.degraded_to_file = True
     return fallback
