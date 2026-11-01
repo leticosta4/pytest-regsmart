@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.0] - 2026-11-01
 
+### Fixed
+- Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
 ### Changed
 - Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
 ## [0.8.2] - 2026-10-31
@@ -26,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
-- Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
 - With `pytest-xdist`, the summary now includes selection and prioritization timings, the comparison branch, and warnings collected by workers. Timings report the slowest worker duration.
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16
