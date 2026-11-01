@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.2] - 2026-10-31
 
+### Changed
+- Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
 ### Security
 - Bump filelock from version 3.32.3 to 4.2.6 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%filelock))
 - Bump virtualenv from version 21.14.9 to 21.14.13 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))

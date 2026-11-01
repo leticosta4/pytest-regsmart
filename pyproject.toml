@@ -15,7 +15,7 @@ authors = [
 maintainers = [
   { name = "leticosta4", email = "leticiacostaoa@gmail.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "pytest>=9.0.3",
   "numpy",
@@ -30,7 +30,6 @@ classifiers = [
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.14",
