@@ -242,6 +242,85 @@ def test_select_items_function_level_keeps_methods_of_selected_class():
     ]
 
 
+def test_select_items_function_level_matches_only_at_nodeid_boundaries():
+    nodeids = [
+        "test_x.py::test_a",
+        "test_x.py::test_ab",
+        "test_x.py::test_a_b[1]",
+        "test_x.py::TestA::test_m",
+        "test_x.py::TestAB::test_m",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_x.py::test_a", "test_x.py::TestA"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_x.py::test_a", "test_x.py::TestA::test_m"]
+
+
+def test_select_items_function_level_handles_separators_inside_param_ids():
+    nodeids = [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+        "test_p.py::test_other[test_run]",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_p.py::test_run", "test_p.py::TestC::test_m"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+    ]
+
+
+def test_select_items_function_level_keeps_collection_order():
+    nodeids = ["test_b.py::test_2", "test_a.py::test_1", "test_b.py::test_1"]
+
+    selected = _select_items(
+        nodeids, ["test_b.py::test_1", "test_b.py::test_2"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_b.py::test_2", "test_b.py::test_1"]
+
+
+def _reference_function_level_filter(nodeids: list[str], selected_nodes: set[str]):
+    """The previous O(items x selected) implementation, kept as an oracle."""
+    return [
+        nodeid
+        for nodeid in nodeids
+        if any(
+            nodeid == node or nodeid.startswith((f"{node}[", f"{node}::"))
+            for node in selected_nodes
+        )
+    ]
+
+
+def test_select_items_function_level_is_equivalent_to_previous_filter():
+    import random
+
+    rng = random.Random(0)
+    parts = ["test_a.py", "test_ab.py", "TestX", "TestXY", "test_m", "test_mn", "f"]
+    params = ["", "[1]", "[a::b]", "[x[0]]", "[]", "[test_m]"]
+
+    def nodeid():
+        depth = rng.randint(1, 3)
+        return "::".join(rng.choice(parts) for _ in range(depth + 1)) + rng.choice(params)
+
+    nodeids = [nodeid() for _ in range(400)]
+    selected_nodes = {
+        nid.split("[")[0].rsplit("::", rng.randint(0, 1))[0]
+        for nid in rng.sample(nodeids, 60)
+    } | {nodeid() for _ in range(20)}
+
+    assert _select_items(nodeids, list(selected_nodes), DIFF_LEVEL.FUNCTION) == (
+        _reference_function_level_filter(nodeids, selected_nodes)
+    )
+
+
 # ---------------------------------------------------------------------------
 # run_rts (end-to-end on a real repo)
 # ---------------------------------------------------------------------------
