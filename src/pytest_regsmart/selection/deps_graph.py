@@ -338,17 +338,20 @@ def get_dependency_graph(
         else _build_file_dependency_graph
     )
 
-    # unparseable files (templates, python2 code, intentionally bug fixtures
+    def _build_with_retries() -> DependencyGraph:
+        # unparseable files (templates, python2 code, intentionally bug fixtures
     #  also crash pyan3 - this logic removes the offending
     # file and tries again, up to a limit of _MAX_SKIPPED_FILES
-    for _ in range(_MAX_SKIPPED_FILES + 1):
-        try:
-            return build(python_files, working_dir)
-        except SyntaxError as exc:
-            bad = os.path.normpath(exc.filename) if exc.filename else None
-            remaining = [f for f in python_files if os.path.normpath(f) != bad]
-            if bad is None or len(remaining) == len(python_files):
-                raise
-            _logger.warning("regsmart: ignorando %s no grafo de dependências (SyntaxError)", bad)
-            python_files = remaining
-    raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")
+        for _ in range(_MAX_SKIPPED_FILES + 1):
+            try:
+                return build(python_files, working_dir)
+            except SyntaxError as exc:
+                bad = os.path.normpath(exc.filename) if exc.filename else None
+                remaining = [f for f in python_files if os.path.normpath(f) != bad]
+                if bad is None or len(remaining) == len(python_files):
+                    raise
+                _logger.warning("regsmart: ignorando %s no grafo de dependências (SyntaxError)", bad)
+                python_files = remaining
+        raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")
+
+    return _build_with_retries()
