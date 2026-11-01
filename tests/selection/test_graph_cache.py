@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import time
+
 import pytest
 
 from pytest_regsmart.const import DIFF_LEVEL
@@ -160,3 +163,42 @@ def test_unreadable_cache_write_does_not_break_build(tmp_path, monkeypatch):
     )
     assert graph == _graph()
     assert status == "miss"
+
+
+def test_waiter_loads_graph_written_by_lock_owner(tmp_path, monkeypatch):
+    source = tmp_path / "module.py"
+    source.write_text("value = 1\n")
+    cache_dir = tmp_path / "cache"
+    fingerprint = graph_cache.compute_fingerprint(str(tmp_path), [str(source)], DIFF_LEVEL.FILE)
+    _, lock = graph_cache._paths(str(cache_dir), DIFF_LEVEL.FILE, fingerprint)
+    lock.parent.mkdir()
+    lock.touch()
+    attempts = iter([None, _graph()])
+    monkeypatch.setattr(graph_cache, "load", lambda *args: next(attempts))
+    monkeypatch.setattr(graph_cache.time, "sleep", lambda _: None)
+
+    graph, status = graph_cache.get_or_build(
+        str(cache_dir), DIFF_LEVEL.FILE, str(tmp_path), [str(source)],
+        lambda: pytest.fail("a waiter should use the owner's graph"),
+    )
+    assert graph == _graph()
+    assert status == "waited"
+
+
+def test_orphaned_lock_is_removed(tmp_path):
+    source = tmp_path / "module.py"
+    source.write_text("value = 1\n")
+    cache_dir = tmp_path / "cache"
+    fingerprint = graph_cache.compute_fingerprint(str(tmp_path), [str(source)], DIFF_LEVEL.FILE)
+    _, lock = graph_cache._paths(str(cache_dir), DIFF_LEVEL.FILE, fingerprint)
+    lock.parent.mkdir()
+    lock.touch()
+    old = time.time() - graph_cache._LOCK_TIMEOUT - 1
+    os.utime(lock, (old, old))
+
+    graph, status = graph_cache.get_or_build(
+        str(cache_dir), DIFF_LEVEL.FILE, str(tmp_path), [str(source)], _graph
+    )
+    assert graph == _graph()
+    assert status == "miss"
+    assert not lock.exists()

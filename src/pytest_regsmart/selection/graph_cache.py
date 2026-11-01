@@ -9,6 +9,7 @@ import os
 import pickle
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
@@ -19,6 +20,8 @@ from .models import DependencyGraph
 
 _CACHE_FORMAT = 1
 _MAX_ENTRIES = 4
+_LOCK_TIMEOUT = 600.0
+_POLL_INTERVAL = 0.5
 _logger = logging.getLogger(__name__)
 
 
@@ -148,6 +151,7 @@ def get_or_build(
         directory = Path(cache_dir)
         directory.mkdir(parents=True, exist_ok=True)
         cached = load(cache_dir, level, fingerprint)
+        _, lock = _paths(cache_dir, level, fingerprint)
     except Exception as exc:  # noqa: BLE001 - cache failures must not affect pytest
         _logger.debug(
             "dependency graph cache unavailable; building without cache: %s", exc
@@ -155,6 +159,38 @@ def get_or_build(
         return build(), "disabled"
     if cached is not None:
         return cached, "hit"
-    graph = build()
-    save(cache_dir, level, fingerprint, graph)
-    return graph, "miss"
+    started = time.monotonic()
+    owner = False
+    while not owner:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(fd)
+            owner = True
+        except FileExistsError:
+            try:
+                if time.time() - lock.stat().st_mtime > _LOCK_TIMEOUT:
+                    lock.unlink()
+                    continue
+            except OSError:
+                continue
+            if time.monotonic() - started >= _LOCK_TIMEOUT:
+                return build(), "miss"
+            time.sleep(_POLL_INTERVAL)
+            cached = load(cache_dir, level, fingerprint)
+            if cached is not None:
+                return cached, "waited"
+        except OSError as exc:
+            _logger.debug("dependency graph cache lock unavailable: %s", exc)
+            return build(), "disabled"
+    try:
+        cached = load(cache_dir, level, fingerprint)
+        if cached is not None:
+            return cached, "hit"
+        graph = build()
+        save(cache_dir, level, fingerprint, graph)
+        return graph, "miss"
+    finally:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
