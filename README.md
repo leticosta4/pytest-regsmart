@@ -288,7 +288,7 @@ tox -- -k "test_name"
 `pytest-regsmart` works with [_pytest_ test filtering](https://docs.pytest.org/en/6.2.x/usage.html#specifying-tests-selecting-tests) and [parallelization](https://pypi.org/project/pytest-xdist).
 It also works with plugins for ordering tests, e.g., [pytest-order](https://pypi.org/project/pytest-order), [pytest-dependency](https://pypi.org/project/pytest-dependency) by running ordered tests first in their declared order. Pytest options that order tests generally (e.g., [`--ff`](https://docs.pytest.org/en/stable/how-to/cache.html#usage)), or plugins that randomly order tests (e.g., [pytest-randomly](https://github.com/pytest-dev/pytest-randomly), [pytest-random-order](https://github.com/pytest-dev/pytest-random-order), [pytest-reverse](https://github.com/adamchainz/pytest-reverse)), can interfere with `pytest-regsmart` as they use the same reordering hook.
 
-`pytest-regsmart` supports Python 3.10+.
+`pytest-regsmart` supports Python 3.11+.
 
 ## Contributing
 
