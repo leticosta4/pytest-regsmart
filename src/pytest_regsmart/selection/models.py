@@ -81,7 +81,73 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
 
     def __init__(self, *args, **kwargs):
         self.module_qualified_calls: set[tuple[str, str]] = set()
+        # (caller, dotted name) for module references passed as call arguments,
+        # e.g. ``doctest.testmod(pkg.mod)``: the callee exercises the whole module.
+        self.module_arguments: set[tuple[str, str]] = set()
+        self._local_import_stack: list[set[str]] = []
+        # Roots bound by ``import a.b`` (without ``as``) in the current file:
+        # pyan leaves ``a`` without a value, but it is the top-level package.
+        self._dotted_import_roots: set[str] = set()
         super().__init__(*args, **kwargs)
+
+    def visit_Module(self, node):
+        self._dotted_import_roots = {
+            alias.name.split(".")[0]
+            for statement in ast.walk(node)
+            if isinstance(statement, ast.Import)
+            for alias in statement.names
+            if alias.asname is None and "." in alias.name
+        }
+        return super().visit_Module(node)
+
+    @staticmethod
+    def _imported_names(node: ast.AST) -> set[str]:
+        names: set[str] = set()
+        for statement in ast.walk(node):
+            if isinstance(statement, ast.Import):
+                names.update(
+                    alias.asname or alias.name.split(".")[0] for alias in statement.names
+                )
+            elif isinstance(statement, ast.ImportFrom):
+                names.update(alias.asname or alias.name for alias in statement.names)
+        return names
+
+    def visit_FunctionDef(self, node):
+        self._local_import_stack.append(self._imported_names(node))
+        try:
+            return super().visit_FunctionDef(node)
+        finally:
+            self._local_import_stack.pop()
+
+    def visit_AsyncFunctionDef(self, node):
+        self._local_import_stack.append(self._imported_names(node))
+        try:
+            return super().visit_AsyncFunctionDef(node)
+        finally:
+            self._local_import_stack.pop()
+
+    def _module_reference(self, expression: ast.AST) -> str | None:
+        """Dotted name of ``expression`` when its root name is bound to a module."""
+        attributes: list[str] = []
+        while isinstance(expression, ast.Attribute):
+            attributes.append(expression.attr)
+            expression = expression.value
+        if not isinstance(expression, ast.Name):
+            return None
+        root_name = expression.id
+        scope = self.scope_stack[-1]
+        if root_name in scope.locals and not (
+            self._local_import_stack and root_name in self._local_import_stack[-1]
+        ):
+            # A local name (e.g. a parameter called ``pkg``) shadows the module;
+            # only a function-local ``import pkg`` keeps it a module reference.
+            return None
+        root_value = self.get_value(root_name)
+        if root_value is None and root_name in self._dotted_import_roots:
+            return ".".join([root_name, *reversed(attributes)])
+        if root_value is None or root_value.flavor != Flavor.MODULE:
+            return None
+        return ".".join([root_value.get_name(), *reversed(attributes)])
 
     def visit_Call(self, node: ast.Call):
         target = node.func
@@ -107,5 +173,14 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
                     [root_value.get_name(), *reversed(attributes)]
                 )
                 self.module_qualified_calls.add((caller, qualified_target))
+
+        arguments = [*node.args, *(keyword.value for keyword in node.keywords)]
+        for argument in arguments:
+            if isinstance(argument, ast.Starred):
+                argument = argument.value
+            reference = self._module_reference(argument)
+            if reference is not None:
+                caller = self.get_node_of_current_namespace().get_name()
+                self.module_arguments.add((caller, reference))
 
         return super().visit_Call(node)

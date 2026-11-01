@@ -926,3 +926,91 @@ def test_get_dependency_graph_propagates_other_errors(git_repo, monkeypatch):
 
     with raises(ValueError, match="boom"):
         get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+
+def _helper_module_project(tmp_path):
+    _write(tmp_path, "pkg/__init__.py", "from .core import run\n")
+    _write(tmp_path, "pkg/core.py", "def run():\n    return 1\n\n\ndef other():\n    return 2\n")
+    # same module name in an unrelated package: must not be picked for the tests
+    _write(tmp_path, "pkg/interfaces/__init__.py")
+    _write(tmp_path, "pkg/interfaces/generic.py", "def helper():\n    return 0\n")
+    _write(tmp_path, "tests/__init__.py")
+    _write(
+        tmp_path,
+        "tests/generic.py",
+        "import os\nimport pkg\n\n\ndef helper():\n    return pkg.run()\n",
+    )
+
+
+def test_function_graph_resolves_sibling_helper_imported_by_bare_name(tmp_path):
+    _helper_module_project(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_helper.py",
+        "try:\n"
+        "    from . import generic as g\n"
+        "except BaseException:\n"
+        "    import generic as g\n"
+        "\n"
+        "def test_through_helper_module():\n"
+        "    assert g.pkg.run() == 1\n"
+        "    g.os.path.join('a', 'b')\n"
+        "\n"
+        "def test_helper_function():\n"
+        "    assert g.helper() == 1\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_helper.test_through_helper_module" in graph.dependents["pkg.core.run"]
+    assert "tests.test_helper.test_helper_function" in graph.dependents["tests.generic.helper"]
+    assert "tests.test_helper.test_helper_function" not in graph.dependents.get(
+        "pkg.interfaces.generic.helper", set()
+    )
+
+
+def test_function_graph_links_module_passed_as_argument(tmp_path):
+    _helper_module_project(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "def test_doctest_of_module():\n"
+        "    import doctest\n"
+        "    import pkg.core\n"
+        "    doctest.testmod(pkg.core)\n"
+        "\n"
+        "def test_parameter_is_not_a_module(pkg):\n"
+        "    print(pkg)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_doc.test_doctest_of_module" in graph.dependents["pkg.core.run"]
+    assert "tests.test_doc.test_doctest_of_module" in graph.dependents["pkg.core.other"]
+    assert not any(
+        "tests.test_doc.test_parameter_is_not_a_module" in dependents
+        for dependents in graph.dependents.values()
+    )
+
+
+def test_function_graph_ignores_unresolvable_module_chains(tmp_path):
+    _helper_module_project(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_external.py",
+        "import generic as g\n"
+        "\n"
+        "def test_third_party_through_helper():\n"
+        "    g.os.missing.call()\n"
+        "    g.pkg.missing()\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert not any(
+        "tests.test_external.test_third_party_through_helper" in dependents
+        for dependents in graph.dependents.values()
+    )
