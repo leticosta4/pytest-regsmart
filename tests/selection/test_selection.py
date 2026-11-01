@@ -489,7 +489,8 @@ def _fake_rts(monkeypatch, results_by_level: dict[DIFF_LEVEL, SelectionResult]):
     calls: list[tuple[DIFF_LEVEL, str]] = []
 
     def fake(
-        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None
+        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None,
+        cache_dir=None, cache_status=None,
     ):
         calls.append((level, time_key))
         if log_dict is not None:
@@ -609,7 +610,8 @@ def test_fallback_forwards_diff_source_to_selection(monkeypatch):
     seen: list = []
 
     def fake(
-        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None
+        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None,
+        cache_dir=None, cache_status=None,
     ):
         seen.append(diff_source)
         return _result(level, ["test_a.py::test_one"])

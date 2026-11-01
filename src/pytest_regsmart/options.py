@@ -105,6 +105,8 @@ def add_ini_options(parser: Parser) -> None:
     parser.addini("ranking_level", RANK_LEVEL_HELP, default=DEFAULT_RANK_LEVEL.value)
     parser.addini("ranking_hist_len", HIST_LEN_HELP, default=DEFAULT_HIST_LEN)
     parser.addini("ranking_seed", SEED_HELP, default=DEFAULT_SEED)
+    parser.addini("graph_cache", "Enable dependency graph caching", type="bool", default=True)
+    parser.addini("graph_cache_dir", "Dependency graph cache directory", default="")
 
 
 def validate_options(config: Config) -> None:

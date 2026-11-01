@@ -11,6 +11,7 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
+from . import graph_cache
 from .git_manager import resolve_repo
 from .models import (
     _KEPT_FLAVORS,
@@ -322,15 +323,12 @@ def _readable_python_files(python_files: list[str]) -> list[str]:
 def get_dependency_graph(
     repo_path: str = ".",
     graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    cache_dir: str | None = None,
+    status: dict | None = None,
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
-    python_files = _readable_python_files(
-        _find_py_files(
-            working_dir,
-            include_stubs=graph_level == DIFF_LEVEL.FUNCTION,
-        )
-    )
+    files = _find_py_files(working_dir, include_stubs=graph_level == DIFF_LEVEL.FUNCTION)
 
     build = (
         _build_function_dependency_graph
@@ -339,6 +337,7 @@ def get_dependency_graph(
     )
 
     def _build_with_retries() -> DependencyGraph:
+        python_files = _readable_python_files(files)
         # unparseable files (templates, python2 code, intentionally bug fixtures
     #  also crash pyan3 - this logic removes the offending
     # file and tries again, up to a limit of _MAX_SKIPPED_FILES
@@ -354,4 +353,9 @@ def get_dependency_graph(
                 python_files = remaining
         raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")
 
-    return _build_with_retries()
+    graph, cache_status = graph_cache.get_or_build(
+        cache_dir, graph_level, working_dir, files, _build_with_retries
+    )
+    if status is not None:
+        status[graph_level.value] = cache_status
+    return graph

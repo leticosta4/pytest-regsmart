@@ -19,6 +19,8 @@ _XDIST_LOG_KEYS = (
     selector.SELECTION_TIME_KEY,
     selector.SELECTION_TIME_KEY_FILE_LEVEL,
     ranker.RANKING_TIME_KEY,
+    "Dependency graph cache (function)",
+    "Dependency graph cache (file)",
 )
 
 
@@ -49,6 +51,7 @@ class PluginRunner:  #pytest hooks
             level=plugin.diff_level,
             log_dict=self.log,
             diff_source=plugin.diff_source,
+            cache_dir=plugin.graph_cache_dir,
         )
         plugin.branch = selection.branch
  
@@ -169,7 +172,10 @@ class PluginRunner:  #pytest hooks
                 if key in info["log"]
             ]
             if values:
-                self.log[key] = max(values)
+                if key.startswith("Dependency graph cache"):
+                    self.log[key] = ", ".join(sorted(set(values)))
+                else:
+                    self.log[key] = max(values)
 
         branches = {info["branch"] for info in self._xdist_worker_info if info["branch"]}
         if len(branches) == 1:
