@@ -66,6 +66,29 @@ def test_function_level_selection_returns_pytest_nodeids():
     assert result == ["tests/test_app.py::test_run"]
 
 
+def test_function_level_selection_keeps_tests_that_run_nested_pytest():
+    deps_graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "app.service.run": FunctionMetadata("app/service.py", 1, 2),
+            "tests.test_nested.TestIntegration.test_child": FunctionMetadata(
+                "tests/test_nested.py", 3, 5
+            ),
+        },
+        functions_by_file={"app/service.py": {"app.service.run"}},
+        subprocess_tests={"tests.test_nested.TestIntegration.test_child"},
+    )
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(1, 1)]},
+    )
+
+    result = _get_affected_tests_at_function_level(diff_result, deps_graph)
+
+    assert result == ["tests/test_nested.py::TestIntegration::test_child"]
+
+
 # ---------------------------------------------------------------------------
 # line_diff_match_function_ids
 # ---------------------------------------------------------------------------

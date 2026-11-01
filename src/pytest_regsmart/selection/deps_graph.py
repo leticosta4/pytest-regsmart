@@ -24,6 +24,7 @@ from .models import (
     ModuleToPath,
     _ModuleQualifiedCallGraphVisitor,
 )
+from .subprocess_analysis import find_nested_pytest_tests
 
 _logger = logging.getLogger(__name__)
 
@@ -271,6 +272,12 @@ def _build_function_dependency_graph(
 
     function_nodes, functions_by_files = _extract_function_nodes(graph, working_dir)
 
+    # The child process has a separate call graph; keep the discovery logic out
+    # of this module so graph construction remains focused on dependency edges.
+    subprocess_tests = find_nested_pytest_tests(
+        python_files, graph.module_to_filename, function_nodes
+    )
+
     function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
 
     for function_node, dependency_nodes in graph.uses_edges.items():
@@ -342,7 +349,8 @@ def _build_function_dependency_graph(
     return DependencyGraph(
         dependents=dependents,
         function_nodes=function_nodes,
-        functions_by_file=functions_by_files
+        functions_by_file=functions_by_files,
+        subprocess_tests=subprocess_tests,
     )
 
 

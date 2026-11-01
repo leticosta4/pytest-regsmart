@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.0] - 2026-11-01
 
 ### Fixed
+- Function-level selection now retains tests that invoke pytester's `runpytest_subprocess()` or `runpytest()` helpers. The child pytest run is not visible to the parent call graph, so these tests are selected conservatively when a Python diff exists.
 - Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
 ### Changed
 - Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)

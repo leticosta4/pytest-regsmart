@@ -500,6 +500,25 @@ def test_get_function_dependency_graph_end_to_end(git_repo):
     }
 
 
+def test_function_graph_records_tests_that_run_nested_pytest(tmp_path):
+    _write(tmp_path, "pkg/service.py", "def changed():\n    return 1\n")
+    _write(
+        tmp_path,
+        "tests/test_nested.py",
+        "class TestDistribution:\n"
+        "    def test_child_pytest(self, pytester):\n"
+        "        pytester.runpytest_subprocess('--help')\n"
+        "\n"
+        "    def test_regular(self):\n"
+        "        assert True\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert graph.subprocess_tests == {"tests.test_nested.TestDistribution.test_child_pytest"}
+
+
 def test_function_graph_keeps_pyan_edges_if_dynamic_pass_fails(
     tmp_path, monkeypatch, caplog
 ):
