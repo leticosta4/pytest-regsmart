@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] pytest-regsmart
 
 ### Changed
-- Function-level filtering of collected items now looks up the selected nodeids in a set (the item's nodeid and its `[`/`::` prefixes) instead of comparing every item against every selected node. The selected items are the same; large selections no longer add seconds to collection (e.g. ~1.8 s to ~5 ms for 8197 items and 770 selected nodes).
+- Function-level filtering of collected items now looks up the selected nodeids in a set (the item's nodeid and its `[`/`::` prefixes) instead of comparing every item against every selected node. The selected items are the same; large selections no longer add seconds to collection (e.g. ~2.0 s to ~15 ms for 8197 items and 770 selected nodes).
 
 ## [0.9.0] - 2026-11-01
 
