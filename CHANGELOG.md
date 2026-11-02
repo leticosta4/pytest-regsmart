@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.1] - 2026-11-02
 
 ### Changed
-- Bump pyan3 version from 2.6.2 to 2.9.0 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
+- Bump pyan3 version from 2.6.2 to 2.8.1 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
 
 ## [0.9.0] - 2026-11-01
 
