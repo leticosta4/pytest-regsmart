@@ -10,7 +10,7 @@ import pickle
 import sys
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
 
@@ -40,7 +40,12 @@ def plugin_code_digest() -> str:
     return digest.hexdigest()
 
 
-def compute_fingerprint(working_dir: str, files: list[str], level: DIFF_LEVEL) -> str:
+def compute_fingerprint(
+    working_dir: str,
+    files: list[str],
+    level: DIFF_LEVEL,
+    deleted_files: Iterable[str] = (),
+) -> str:
     digest = hashlib.sha256()
     parts = (
         str(_CACHE_FORMAT),
@@ -51,6 +56,12 @@ def compute_fingerprint(working_dir: str, files: list[str], level: DIFF_LEVEL) -
     )
     for part in parts:
         digest.update(part.encode())
+        digest.update(b"\0")
+    # Deleted files are not on disk, but the file-level graph keeps their
+    # import names (see _build_file_dependency_graph), so they change the graph.
+    for deleted in sorted({os.path.normpath(f).replace(os.sep, "/") for f in deleted_files}):
+        digest.update(b"<deleted>\0")
+        digest.update(deleted.encode())
         digest.update(b"\0")
     for filename in sorted(files, key=lambda f: os.path.relpath(f, working_dir)):
         path = Path(filename)
@@ -143,11 +154,12 @@ def get_or_build(
     working_dir: str,
     files: list[str],
     build: Callable[[], DependencyGraph],
+    deleted_files: Iterable[str] = (),
 ) -> tuple[DependencyGraph, str]:
     if cache_dir is None:
         return build(), "disabled"
     try:
-        fingerprint = compute_fingerprint(working_dir, files, level)
+        fingerprint = compute_fingerprint(working_dir, files, level, deleted_files)
         directory = Path(cache_dir)
         directory.mkdir(parents=True, exist_ok=True)
         cached = load(cache_dir, level, fingerprint)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pytest_regsmart.const import (
     DEFAULT_DIFF_LEVEL,
@@ -20,6 +21,14 @@ SELECTION_TIME_KEY = "Time to run the regression test selection (s)"
 SELECTION_TIME_KEY_FILE_LEVEL = "Time to run the file-level regression test selection (s)"
 
 
+def _files_without_line_ranges(diff_result: DiffResult) -> set[str]:
+    return (
+        set(diff_result.untracked_files)
+        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
+        | set(diff_result.deleted_files)
+    )
+
+
 @dataclass
 class SelectionResult:
     affected_tests: list[str]
@@ -29,6 +38,9 @@ class SelectionResult:
     no_merge_base: bool = False
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL
     degraded_to_file: bool = False
+    deleted_files: list[str] = field(default_factory=list)
+    unresolved_files: list[str] = field(default_factory=list)
+    degraded_from_unresolved: bool = False
 
 
 def line_diff_match_function_ids(
@@ -40,12 +52,7 @@ def line_diff_match_function_ids(
     specific range fallback to the entire file"""
     changed: set[str] = set()
 
-    no_range_files = ( 
-        set(diff_result.untracked_files)
-        | (set(diff_result.modified_files) - set(diff_result.changed_line_ranges))
-    ) #maybe broken
-
-    for filepath in no_range_files:
+    for filepath in _files_without_line_ranges(diff_result):
         changed.update(deps_graph.functions_by_file.get(filepath, set()))
 
     for filepath, ranges in diff_result.changed_line_ranges.items():
@@ -62,6 +69,46 @@ def line_diff_match_function_ids(
             changed.update(matched or candidates)  #not a specific match
 
     return changed
+
+
+def _unresolved_changed_files(
+    diff_result: DiffResult,
+    deps_graph: DependencyGraph,
+) -> set[str]:
+    """Changed files the function-level graph cannot fully resolve.
+
+    A file is unresolved when it has no function node in the graph (e.g. a
+    module of constants, or a deleted file) or when some changed hunk falls
+    outside every function/method/class: the node that used to exist may be
+    gone (deleted function) or the change is not tied to any callable
+    (imports, constants, comments). Such files are handled conservatively at
+    the file level, since function-level dependents cannot be located."""
+ 
+    unresolved: set[str] = set()
+
+    for filepath in _files_without_line_ranges(diff_result):
+        if not deps_graph.functions_by_file.get(filepath):
+            unresolved.add(filepath)
+
+    unresolved.update(diff_result.pure_deletion_files)
+
+    for filepath, ranges in diff_result.changed_line_ranges.items():
+        candidates = deps_graph.functions_by_file.get(filepath, set())
+        if not candidates:
+            unresolved.add(filepath)
+            continue
+
+        for start, end in ranges:
+            matched = any(
+                start <= deps_graph.function_nodes[fid].end_line
+                and deps_graph.function_nodes[fid].start_line <= end
+                for fid in candidates
+            )
+            if not matched:
+                unresolved.add(filepath)
+                break
+
+    return unresolved
 
 
 def _get_affected_nodes(
@@ -89,11 +136,62 @@ def _get_affected_nodes(
     return seen
 
 
+def _add_collected_fixture_edges(items: list, deps_graph: DependencyGraph) -> None:
+    """Connect pytest's resolved fixture closure to its collected test item.
+
+    Pytest has already resolved overrides, autouse fixtures and parametrized
+    fixture definitions by collection time; use that exact closure instead of
+    trying to infer fixture names or types from test annotations.
+    """
+    by_location: dict[tuple[str, str], set[str]] = {}
+    for function_id, metadata in deps_graph.function_nodes.items():
+        by_location.setdefault((os.path.normpath(metadata.filepath), function_id.rsplit(".", 1)[-1]), set()).add(function_id)
+
+    for item in items:
+        test_path = os.path.normpath(str(item.path))
+        test_name = item.nodeid.split("::")[-1].split("[")[0]
+        test_ids = by_location.get((test_path, test_name), set())
+        if not test_ids:
+            # Graph paths are relative to the repository; pytest paths may be
+            # absolute. Match by suffix while retaining the function name.
+            test_ids = {
+                fid for fid, metadata in deps_graph.function_nodes.items()
+                if metadata.filepath.endswith(test_path.replace(os.sep, "/").split("/")[-1])
+                and fid.rsplit(".", 1)[-1] == test_name
+            }
+        if not test_ids:
+            continue
+        fixtureinfo = getattr(item, "_fixtureinfo", None)
+        definitions = getattr(fixtureinfo, "name2fixturedefs", {}) or {}
+        fixture_functions = set()
+        for fixturedefs in definitions.values():
+            for fixturedef in fixturedefs or ():
+                func = getattr(fixturedef, "func", None)
+                if func is None:
+                    continue
+                code = getattr(func, "__code__", None)
+                if code is None:
+                    continue
+                try:
+                    fixture_path = os.path.relpath(code.co_filename, os.getcwd())
+                except ValueError:
+                    continue
+                fixture_functions.update(by_location.get((os.path.normpath(fixture_path), func.__name__), ()))
+        for fixture_id in fixture_functions:
+            deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
+
+
 def _get_affected_tests_at_file_level(
     diff_result: DiffResult,
     deps_graph: DependencyGraph,
+    changed_files: set[str] | None = None,
 ) -> list[str]:
-    changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
+    if changed_files is None:
+        changed_files = (
+            set(diff_result.modified_files)
+            | set(diff_result.untracked_files)
+            | set(diff_result.deleted_files)
+        )
     affected_nodes = _get_affected_nodes(changed_files, deps_graph)
 
     return sorted(node for node in affected_nodes if _is_test_file(node))
@@ -105,6 +203,10 @@ def _get_affected_tests_at_function_level(
 ) -> list[str]:
     changed_function_ids = line_diff_match_function_ids(diff_result, deps_graph)
     affected_function_ids = _get_affected_nodes(changed_function_ids, deps_graph)
+    # Parent-side static analysis cannot observe code executed by a nested
+    # pytest collection. Keep such tests as a conservative fallback so changes
+    # to fixtures, hooks, or plugin behavior used only in the child are covered.
+    affected_function_ids.update(deps_graph.subprocess_tests)
 
     # pytest filters collected items by their nodeid. A function graph id uses
     # dotted Python names, while pytest uses ``path.py::Class::test``.
@@ -133,21 +235,44 @@ def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
     return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
-def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
-    items[:] = (
-        [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
-        if diff_level == DIFF_LEVEL.FILE
-        else [
-            item
-            for item in items
-            if any(
-                item.nodeid == selected_node
-                or item.nodeid.startswith(f"{selected_node}[")
-                or item.nodeid.startswith(f"{selected_node}::")
-                for selected_node in selected_nodes
-            )
-        ]
+_NODEID_BOUNDARY = re.compile(r"\[|::")
+
+
+def _nodeid_candidates(nodeid: str):
+    """Yield ``nodeid`` and each prefix that ends right before ``[`` or ``::``.
+
+    A selected node matches an item when it equals the item's nodeid or when
+    the nodeid starts with the selected node followed by ``[`` (parametrized
+    variant) or ``::`` (member of a selected class/module). Those are exactly
+    the prefixes yielded here, so a set lookup per candidate replaces the
+    comparison against every selected node.
+    """
+    yield nodeid
+    for boundary in _NODEID_BOUNDARY.finditer(nodeid):
+        yield nodeid[: boundary.start()]
+
+
+def _matches_function_selection(nodeid: str, selected_nodes: set[str]) -> bool:
+    return any(
+        candidate in selected_nodes for candidate in _nodeid_candidates(nodeid)
     )
+
+
+def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
+    # ``item.nodeid`` is read once per item; the selection is looked up in a set
+    # instead of being scanned for every item (O(items x selected) before).
+    if not isinstance(selected_nodes, (set, frozenset)):
+        selected_nodes = set(selected_nodes)
+    if diff_level == DIFF_LEVEL.FILE:
+        items[:] = [
+            item for item in items if item.nodeid.split("::")[0] in selected_nodes
+        ]
+        return
+    items[:] = [
+        item
+        for item in items
+        if _matches_function_selection(item.nodeid, selected_nodes)
+    ]
 
 
 def run_rts(
@@ -155,6 +280,8 @@ def run_rts(
     log_dict: dict | None = None,
     time_key: str = SELECTION_TIME_KEY,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
+    files_to_select: set[str] | None = None,
     cache_dir: str | None = None,
     cache_status: dict | None = None,
 ) -> SelectionResult:
@@ -164,7 +291,12 @@ def run_rts(
     diff_result = get_git_diff(diff_level=level, diff_source=diff_source)
     diff_result.modified_files = _filter_python_files(diff_result.modified_files)
     diff_result.untracked_files = _filter_python_files(diff_result.untracked_files)
-    has_diff=bool(diff_result.modified_files or diff_result.untracked_files)
+    diff_result.deleted_files = _filter_python_files(diff_result.deleted_files)
+    has_diff = bool(
+        diff_result.modified_files
+        or diff_result.untracked_files
+        or diff_result.deleted_files
+    )
     used_branch = diff_result.used_branch
 
     if diff_result.no_merge_base:
@@ -184,7 +316,11 @@ def run_rts(
             level=level,
         )
 
-    changed_files = set(diff_result.modified_files) | set(diff_result.untracked_files)
+    changed_files = (
+        set(diff_result.modified_files)
+        | set(diff_result.untracked_files)
+        | set(diff_result.deleted_files)
+    )
     if any(_is_conftest(f) for f in changed_files):
         return SelectionResult(
             affected_tests=[],
@@ -194,12 +330,29 @@ def run_rts(
             level=level,
         )
     
-    deps_graph = get_dependency_graph(graph_level=level, cache_dir=cache_dir, status=cache_status)
+    deps_graph = get_dependency_graph(
+        graph_level=level,
+        deleted_files=diff_result.deleted_files,
+        cache_dir=cache_dir,
+        status=cache_status,
+    )
+    # get_or_build stores the graph before returning it, so the collected
+    # fixture edges added below never reach the cache.
+    if level == DIFF_LEVEL.FUNCTION and items:
+        _add_collected_fixture_edges(items, deps_graph)
 
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
         if level == DIFF_LEVEL.FUNCTION
-        else _get_affected_tests_at_file_level(diff_result, deps_graph)
+        else _get_affected_tests_at_file_level(
+            diff_result, deps_graph, changed_files=files_to_select
+        )
+    )
+
+    unresolved = (
+        sorted(_unresolved_changed_files(diff_result, deps_graph))
+        if level == DIFF_LEVEL.FUNCTION
+        else []
     )
 
     if log_dict is not None:
@@ -210,16 +363,18 @@ def run_rts(
         has_diff=has_diff,
         branch=used_branch,
         level=level,
+        deleted_files=diff_result.deleted_files,
+        unresolved_files=unresolved,
     )
 
 
 def _should_degrade_to_file(result: SelectionResult, level: DIFF_LEVEL) -> bool:
     return (
         level == DIFF_LEVEL.FUNCTION
-        and not result.affected_tests
         and result.has_diff
         and not result.full_run
         and not result.no_merge_base
+        and (not result.affected_tests or bool(result.unresolved_files))
     )
 
 
@@ -227,32 +382,66 @@ def run_rts_with_fallback(
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     log_dict: dict | None = None,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
     cache_dir: str | None = None,
 ) -> SelectionResult:
-    """Run RTS and, on a suspicious empty function-level result, retry at file level.
+    """Run RTS and, on a suspicious function-level result, retry at file level.
 
-    A function-level selection that finds nothing while a diff exists is often a
-    false negative (e.g. tests calling names reexported in ``__init__.py``), so
-    the file-level selection is used as a safer, less precise fallback.
+    An empty function-level selection falls back to file-level selection. When
+    it found tests but some changed files are unresolved, add file-level
+    dependents for only those files and preserve the function-level results.
     """
     cache_status: dict = {}
-    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source,
-                     cache_dir=cache_dir, cache_status=cache_status)
+    run_kwargs = {
+        "level": level,
+        "log_dict": log_dict,
+        "diff_source": diff_source,
+        "cache_dir": cache_dir,
+        "cache_status": cache_status,
+    }
+    if items is not None:
+        run_kwargs["items"] = items
+    result = run_rts(**run_kwargs)
     if log_dict is not None:
         log_dict[f"Dependency graph cache ({level.value})"] = cache_status.get(level.value, "unused")
 
     if not _should_degrade_to_file(result, level):
         return result
 
-    fallback = run_rts(
-        level=DIFF_LEVEL.FILE,
-        log_dict=log_dict,
-        time_key=SELECTION_TIME_KEY_FILE_LEVEL,
-        diff_source=diff_source,
-        cache_dir=cache_dir,
-        cache_status=cache_status,
-    )
-    if log_dict is not None:
-        log_dict[f"Dependency graph cache ({DIFF_LEVEL.FILE.value})"] = cache_status.get(DIFF_LEVEL.FILE.value, "unused")
-    fallback.degraded_to_file = True
-    return fallback
+    fallback_kwargs = {
+        "level": DIFF_LEVEL.FILE,
+        "log_dict": log_dict,
+        "time_key": SELECTION_TIME_KEY_FILE_LEVEL,
+        "diff_source": diff_source,
+        "cache_dir": cache_dir,
+        "cache_status": cache_status,
+    }
+    if items is not None:
+        fallback_kwargs["items"] = items
+
+    def _log_file_cache_status() -> None:
+        if log_dict is not None:
+            log_dict[f"Dependency graph cache ({DIFF_LEVEL.FILE.value})"] = cache_status.get(
+                DIFF_LEVEL.FILE.value, "unused"
+            )
+
+    if not result.affected_tests:
+        fallback = run_rts(**fallback_kwargs)
+        _log_file_cache_status()
+        fallback.degraded_to_file = True
+        fallback.degraded_from_unresolved = bool(result.unresolved_files)
+        fallback.unresolved_files = result.unresolved_files
+        return fallback
+
+    if result.unresolved_files:
+        file_level = run_rts(
+            **fallback_kwargs,
+            files_to_select=set(result.unresolved_files),
+        )
+        _log_file_cache_status()
+        result.affected_tests = sorted(
+            set(result.affected_tests) | set(file_level.affected_tests)
+        )
+        result.degraded_to_file = True
+        result.degraded_from_unresolved = True
+    return result

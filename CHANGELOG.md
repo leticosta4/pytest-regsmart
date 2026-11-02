@@ -9,8 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] pytest-regsmart
 
 ### Added
-- Cache dependency graphs by source contents, plugin code, graph level, Python version, and pyan3 version; concurrent xdist workers coordinate builds with a lock. Configure with `graph_cache`, `graph_cache_dir`, `REGSMART_GRAPH_CACHE`, and `REGSMART_GRAPH_CACHE_DIR`.
+- Cache dependency graphs by source contents, plugin code, graph level, Python version, pyan3 version and, for the file-level graph, the diff's deleted files; concurrent xdist workers coordinate builds with a lock. Configure with `graph_cache`, `graph_cache_dir`, `REGSMART_GRAPH_CACHE`, and `REGSMART_GRAPH_CACHE_DIR`.
 
+## [0.9.1] - 2026-11-02
+
+### Changed
+- Bump pyan3 version from 2.6.2 to 2.8.1 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
+
+## [0.9.0] - 2026-11-01
+
+### Fixed
+- Function-level selection now follows qualified calls through imported submodules, aliases, package re-exports, and `import *` bindings to the original function. Tests that reach a changed function through a re-export or an intermediate algorithm are therefore included.
+- Function-level selection now follows pytest's resolved fixture dependencies and class members invoked implicitly, including special methods and properties.
+- Function-level selection now retains tests that invoke pytester's `runpytest_subprocess()` or `runpytest()` helpers. The child pytest run is not visible to the parent call graph, so these tests are selected conservatively when a Python diff exists.
+- Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
+### Changed
+- Function-level filtering of collected items now looks up the selected nodeids in a set (the item's nodeid and its `[`/`::` prefixes) instead of comparing every item against every selected node. The selected items are the same; large selections no longer add seconds to collection (e.g. ~2.0 s to ~15 ms for 8197 items and 770 selected nodes).
+- Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
 ## [0.8.2] - 2026-10-31
 
 ### Security
@@ -20,11 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.1] - 2026-10-26
 
 ### Added
+- Flag deleted files in the diff result so their dependent tests can be considered by selection
+- Track changed files that the function-level selection cannot resolve — hunks outside every function/class, deleted functions or files, modules without functions, files absent from the graph — in the `SelectionResult`
+- For unresolved files, add their file-level dependents to any tests already selected at function level
 - Add remote branches fallback to `--local-diff` flag when value is True
 ### Security
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
+- Deleting a function/class or an assumed-empty module no longer silently drops its dependent tests: file-level dependents are added when function-level selection cannot resolve the deletion (dependents reached only through *lazy imports* may remain outside both graphs)
 - With `pytest-xdist`, the summary now includes selection and prioritization timings, the comparison branch, and warnings collected by workers. Timings report the slowest worker duration.
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16

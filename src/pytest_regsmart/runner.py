@@ -9,7 +9,7 @@ from _pytest.terminal import TerminalReporter
 
 from . import reporter as reporter_mod
 from .config import PluginConfig
-from .const import DIFF_SOURCE
+from .const import DIFF_LEVEL, DIFF_SOURCE
 from .monitor import Monitor
 from .ranking import extractor, ranker
 from .selection import selector
@@ -51,6 +51,7 @@ class PluginRunner:  #pytest hooks
             level=plugin.diff_level,
             log_dict=self.log,
             diff_source=plugin.diff_source,
+            items=items,
             cache_dir=plugin.graph_cache_dir,
         )
         plugin.branch = selection.branch
@@ -124,10 +125,31 @@ class PluginRunner:  #pytest hooks
             )
 
         if selection.degraded_to_file:
-            self.warnings.append(
-                "Function-level selection found no affected tests; falling back to "
-                f"file-level selection ({len(selection.affected_tests)} test file(s))."
-            )
+            if (
+                selection.degraded_from_unresolved
+                and selection.affected_tests
+                and selection.level == DIFF_LEVEL.FUNCTION
+            ):
+                files = ", ".join(selection.unresolved_files)
+                self.warnings.append(
+                    "Function-level selection left "
+                    f"{len(selection.unresolved_files)} file(s) unresolved "
+                    f"({files}); adding file-level dependents to the function-level "
+                    f"selection ({len(selection.affected_tests)} selected node(s))."
+                )
+            elif selection.degraded_from_unresolved:
+                files = ", ".join(selection.unresolved_files)
+                self.warnings.append(
+                    "Function-level selection left "
+                    f"{len(selection.unresolved_files)} file(s) unresolved "
+                    f"({files}); falling back to file-level selection "
+                    f"({len(selection.affected_tests)} test file(s))."
+                )
+            else:
+                self.warnings.append(
+                    "Function-level selection found no affected tests; falling back to "
+                    f"file-level selection ({len(selection.affected_tests)} test file(s))."
+                )
 
  
     def pytest_runtest_logreport(self, report: TestReport) -> None:

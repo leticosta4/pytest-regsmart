@@ -202,3 +202,34 @@ def test_orphaned_lock_is_removed(tmp_path):
     assert graph == _graph()
     assert status == "miss"
     assert not lock.exists()
+
+
+def test_deleted_files_are_part_of_the_file_level_cache_key(tmp_path):
+    import git
+
+    from pytest_regsmart.selection.deps_graph import get_dependency_graph
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    repo = git.Repo.init(repo_dir)
+    (repo_dir / "lib.py").write_text("def f():\n    return 1\n")
+    (repo_dir / "test_lib.py").write_text("import lib\n\ndef test_f():\n    assert lib.f() == 1\n")
+    repo.index.add(["lib.py", "test_lib.py"])
+    repo.index.commit("init")
+    (repo_dir / "lib.py").unlink()
+    cache_dir = str(tmp_path / "cache")
+
+    status = {}
+    get_dependency_graph(str(repo_dir), DIFF_LEVEL.FILE, deleted_files=[], cache_dir=cache_dir, status=status)
+    assert status["file"] == "miss"
+
+    status = {}
+    graph = get_dependency_graph(
+        str(repo_dir), DIFF_LEVEL.FILE, deleted_files=["lib.py"], cache_dir=cache_dir, status=status
+    )
+    assert status["file"] == "miss"
+    assert "test_lib.py" in graph.dependents["lib.py"]
+
+    status = {}
+    get_dependency_graph(str(repo_dir), DIFF_LEVEL.FILE, deleted_files=["lib.py"], cache_dir=cache_dir, status=status)
+    assert status["file"] == "hit"

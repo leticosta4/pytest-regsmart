@@ -18,6 +18,7 @@ class DiffResult:
     untracked_files: list[str] = field(default_factory=list) #brand new files - maybe add a future flag to look only at unstaged+untracked tests
     deleted_files: list[str] = field(default_factory=list)
     changed_line_ranges: ChangedLineRanges = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
+    pure_deletion_files: set[str] = field(default_factory=set)
     no_merge_base: bool = False  #base resolved, but no shared history with HEAD
 
 
@@ -69,6 +70,7 @@ class DependencyGraph:
     dependents: DependentsMap  #key: module (file level) or function_id (function level), value: set of modules that depend on / are affected by it
     function_nodes: FunctionNodes = field(default_factory=dict)  #the key represents the funcion name/node name
     functions_by_file: FunctionsByFile = field(default_factory=dict)
+    subprocess_tests: set[str] = field(default_factory=set)
 
 
 class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):

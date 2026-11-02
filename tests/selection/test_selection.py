@@ -14,9 +14,11 @@ from src.pytest_regsmart.selection.selector import (
     SELECTION_TIME_KEY,
     SELECTION_TIME_KEY_FILE_LEVEL,
     SelectionResult,
+    _add_collected_fixture_edges,
     _function_id_to_pytest_nodeid,
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
+    _unresolved_changed_files,
     filter_pytest_items_for_rtp,
     line_diff_match_function_ids,
     run_rts,
@@ -64,6 +66,62 @@ def test_function_level_selection_returns_pytest_nodeids():
     result = _get_affected_tests_at_function_level(diff_result, deps_graph)
 
     assert result == ["tests/test_app.py::test_run"]
+
+
+def test_collected_fixture_closure_links_fixture_to_test(tmp_path, monkeypatch):
+    fixture_path = tmp_path / "conftest.py"
+    fixture_path.write_text("def settings():\n    return object()\n")
+    test_path = tmp_path / "test_settings.py"
+    test_path.write_text("def test_assign(settings):\n    settings.value = 1\n")
+    monkeypatch.chdir(tmp_path)
+
+    class FixtureDef:
+        func = __import__("runpy").run_path(str(fixture_path))["settings"]
+
+    class FixtureInfo:
+        def __init__(self):
+            self.name2fixturedefs = {"settings": [FixtureDef()]}
+
+    class Item:
+        path = test_path
+        nodeid = "test_settings.py::test_assign"
+        def __init__(self):
+            self._fixtureinfo = FixtureInfo()
+
+    graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "conftest.settings": FunctionMetadata("conftest.py", 1, 2),
+            "test_settings.test_assign": FunctionMetadata("test_settings.py", 1, 2),
+        },
+    )
+
+    _add_collected_fixture_edges([Item()], graph)
+
+    assert graph.dependents["conftest.settings"] == {"test_settings.test_assign"}
+
+
+def test_function_level_selection_keeps_tests_that_run_nested_pytest():
+    deps_graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "app.service.run": FunctionMetadata("app/service.py", 1, 2),
+            "tests.test_nested.TestIntegration.test_child": FunctionMetadata(
+                "tests/test_nested.py", 3, 5
+            ),
+        },
+        functions_by_file={"app/service.py": {"app.service.run"}},
+        subprocess_tests={"tests.test_nested.TestIntegration.test_child"},
+    )
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(1, 1)]},
+    )
+
+    result = _get_affected_tests_at_function_level(diff_result, deps_graph)
+
+    assert result == ["tests/test_nested.py::TestIntegration::test_child"]
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +231,81 @@ def test_line_diff_file_absent_from_graph_contributes_nothing():
 
 
 # ---------------------------------------------------------------------------
+# _unresolved_changed_files
+# ---------------------------------------------------------------------------
+
+
+def test_unresolved_hunk_outside_any_function():
+    deps_graph = _function_graph()
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(1, 1)]},
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == {"app/service.py"}
+
+
+def test_unresolved_deleted_function_anchor_outside_surviving_functions():
+    deps_graph = _function_graph()
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(5, 5)]},
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == {"app/service.py"}
+
+
+def test_pure_deletion_hunk_is_unresolved_even_when_anchor_hits_surviving_class():
+    deps_graph = DependencyGraph(
+        dependents={},
+        function_nodes={"app.service.Calc": FunctionMetadata("app/service.py", 1, 20)},
+        functions_by_file={"app/service.py": {"app.service.Calc"}},
+    )
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(17, 17)]},
+        pure_deletion_files={"app/service.py"},
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == {"app/service.py"}
+
+
+def test_unresolved_file_absent_from_graph():
+    deps_graph = _function_graph()
+    diff_result = DiffResult(
+        modified_files=["deleted/service.py"],
+        used_branch="main",
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == {"deleted/service.py"}
+
+
+def test_resolved_hunk_inside_function():
+    deps_graph = _function_graph()
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(6, 7)]},
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == set()
+
+
+def test_untracked_file_with_functions_is_resolved():
+    deps_graph = _function_graph()
+    diff_result = DiffResult(
+        modified_files=[],
+        untracked_files=["app/new.py"],
+        used_branch="main",
+    )
+
+    assert _unresolved_changed_files(diff_result, deps_graph) == set()
+
+
+# ---------------------------------------------------------------------------
 # _function_id_to_pytest_nodeid
 # ---------------------------------------------------------------------------
 
@@ -242,6 +375,85 @@ def test_select_items_function_level_keeps_methods_of_selected_class():
     ]
 
 
+def test_select_items_function_level_matches_only_at_nodeid_boundaries():
+    nodeids = [
+        "test_x.py::test_a",
+        "test_x.py::test_ab",
+        "test_x.py::test_a_b[1]",
+        "test_x.py::TestA::test_m",
+        "test_x.py::TestAB::test_m",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_x.py::test_a", "test_x.py::TestA"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_x.py::test_a", "test_x.py::TestA::test_m"]
+
+
+def test_select_items_function_level_handles_separators_inside_param_ids():
+    nodeids = [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+        "test_p.py::test_other[test_run]",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_p.py::test_run", "test_p.py::TestC::test_m"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+    ]
+
+
+def test_select_items_function_level_keeps_collection_order():
+    nodeids = ["test_b.py::test_2", "test_a.py::test_1", "test_b.py::test_1"]
+
+    selected = _select_items(
+        nodeids, ["test_b.py::test_1", "test_b.py::test_2"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_b.py::test_2", "test_b.py::test_1"]
+
+
+def _reference_function_level_filter(nodeids: list[str], selected_nodes: set[str]):
+    """The previous O(items x selected) implementation, kept as an oracle."""
+    return [
+        nodeid
+        for nodeid in nodeids
+        if any(
+            nodeid == node or nodeid.startswith((f"{node}[", f"{node}::"))
+            for node in selected_nodes
+        )
+    ]
+
+
+def test_select_items_function_level_is_equivalent_to_previous_filter():
+    import random
+
+    rng = random.Random(0)
+    parts = ["test_a.py", "test_ab.py", "TestX", "TestXY", "test_m", "test_mn", "f"]
+    params = ["", "[1]", "[a::b]", "[x[0]]", "[]", "[test_m]"]
+
+    def nodeid():
+        depth = rng.randint(1, 3)
+        return "::".join(rng.choice(parts) for _ in range(depth + 1)) + rng.choice(params)
+
+    nodeids = [nodeid() for _ in range(400)]
+    selected_nodes = {
+        nid.split("[")[0].rsplit("::", rng.randint(0, 1))[0]
+        for nid in rng.sample(nodeids, 60)
+    } | {nodeid() for _ in range(20)}
+
+    assert _select_items(nodeids, list(selected_nodes), DIFF_LEVEL.FUNCTION) == (
+        _reference_function_level_filter(nodeids, selected_nodes)
+    )
+
+
 # ---------------------------------------------------------------------------
 # run_rts (end-to-end on a real repo)
 # ---------------------------------------------------------------------------
@@ -307,6 +519,35 @@ def test_run_rts_commit_source_ignores_worktree_conftest(
     assert result.full_run is False
     assert result.has_diff is False
     assert result.affected_tests == []
+
+
+def test_run_rts_function_level_reports_unresolved_files(
+    git_repo, commit_file, monkeypatch
+):
+    _commit_sample_project(git_repo, commit_file)
+    commit_file("const_mod.py", "VALUE = 1\n")
+    Path(git_repo.working_tree_dir, "const_mod.py").write_text("VALUE = 2\n")
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
+
+    assert result.affected_tests == []
+    assert result.unresolved_files == ["const_mod.py"]
+
+
+def test_run_rts_function_level_resolved_diff_has_no_unresolved_files(
+    git_repo, commit_file, monkeypatch
+):
+    _commit_sample_project(git_repo, commit_file)
+    Path(git_repo.working_tree_dir, "service.py").write_text(
+        "def run():\n    return 0\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
+
+    assert result.affected_tests == ["test_app.py::test_run"]
+    assert result.unresolved_files == []
 
 
 def test_run_rts_without_diff_selects_nothing(git_repo, commit_file, monkeypatch):
@@ -489,8 +730,13 @@ def _fake_rts(monkeypatch, results_by_level: dict[DIFF_LEVEL, SelectionResult]):
     calls: list[tuple[DIFF_LEVEL, str]] = []
 
     def fake(
-        level=DEFAULT_DIFF_LEVEL, log_dict=None, time_key=SELECTION_TIME_KEY, diff_source=None,
-        cache_dir=None, cache_status=None,
+        level=DEFAULT_DIFF_LEVEL,
+        log_dict=None,
+        time_key=SELECTION_TIME_KEY,
+        diff_source=None,
+        files_to_select=None,
+        cache_dir=None,
+        cache_status=None,
     ):
         calls.append((level, time_key))
         if log_dict is not None:
@@ -546,6 +792,40 @@ def test_fallback_with_both_levels_empty_returns_empty_result(monkeypatch):
     assert result.affected_tests == []
     assert result.degraded_to_file is True
     assert result.level == DIFF_LEVEL.FILE
+
+
+def test_fallback_supplements_nonempty_function_selection_for_unresolved_files(monkeypatch):
+    calls = []
+
+    def fake(
+        level=DEFAULT_DIFF_LEVEL,
+        log_dict=None,
+        time_key=SELECTION_TIME_KEY,
+        diff_source=None,
+        cache_dir=None,
+        cache_status=None,
+        files_to_select=None,
+    ):
+        calls.append((level, time_key, files_to_select))
+        if level == DIFF_LEVEL.FUNCTION:
+            return _result(
+                level,
+                ["test_a.py::test_one"],
+                unresolved_files=["const_mod.py"],
+            )
+        return _result(level, ["test_b.py"])
+
+    monkeypatch.setattr(selector_module, "run_rts", fake)
+
+    result = run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION)
+
+    assert result.affected_tests == ["test_a.py::test_one", "test_b.py"]
+    assert result.level == DIFF_LEVEL.FUNCTION
+    assert result.degraded_to_file is True
+    assert result.degraded_from_unresolved is True
+    assert result.unresolved_files == ["const_mod.py"]
+    assert [level for level, _, _ in calls] == [DIFF_LEVEL.FUNCTION, DIFF_LEVEL.FILE]
+    assert calls[1][2] == {"const_mod.py"}
 
 
 def test_fallback_not_triggered_when_function_selection_finds_tests(monkeypatch):
