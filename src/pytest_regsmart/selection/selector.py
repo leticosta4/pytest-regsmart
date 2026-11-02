@@ -282,6 +282,8 @@ def run_rts(
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
     items: list | None = None,
     files_to_select: set[str] | None = None,
+    cache_dir: str | None = None,
+    cache_status: dict | None = None,
 ) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
@@ -331,7 +333,11 @@ def run_rts(
     deps_graph = get_dependency_graph(
         graph_level=level,
         deleted_files=diff_result.deleted_files,
+        cache_dir=cache_dir,
+        status=cache_status,
     )
+    # get_or_build stores the graph before returning it, so the collected
+    # fixture edges added below never reach the cache.
     if level == DIFF_LEVEL.FUNCTION and items:
         _add_collected_fixture_edges(items, deps_graph)
 
@@ -377,6 +383,7 @@ def run_rts_with_fallback(
     log_dict: dict | None = None,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
     items: list | None = None,
+    cache_dir: str | None = None,
 ) -> SelectionResult:
     """Run RTS and, on a suspicious function-level result, retry at file level.
 
@@ -384,14 +391,19 @@ def run_rts_with_fallback(
     it found tests but some changed files are unresolved, add file-level
     dependents for only those files and preserve the function-level results.
     """
+    cache_status: dict = {}
     run_kwargs = {
         "level": level,
         "log_dict": log_dict,
         "diff_source": diff_source,
+        "cache_dir": cache_dir,
+        "cache_status": cache_status,
     }
     if items is not None:
         run_kwargs["items"] = items
     result = run_rts(**run_kwargs)
+    if log_dict is not None:
+        log_dict[f"Dependency graph cache ({level.value})"] = cache_status.get(level.value, "unused")
 
     if not _should_degrade_to_file(result, level):
         return result
@@ -401,12 +413,21 @@ def run_rts_with_fallback(
         "log_dict": log_dict,
         "time_key": SELECTION_TIME_KEY_FILE_LEVEL,
         "diff_source": diff_source,
+        "cache_dir": cache_dir,
+        "cache_status": cache_status,
     }
     if items is not None:
         fallback_kwargs["items"] = items
 
+    def _log_file_cache_status() -> None:
+        if log_dict is not None:
+            log_dict[f"Dependency graph cache ({DIFF_LEVEL.FILE.value})"] = cache_status.get(
+                DIFF_LEVEL.FILE.value, "unused"
+            )
+
     if not result.affected_tests:
         fallback = run_rts(**fallback_kwargs)
+        _log_file_cache_status()
         fallback.degraded_to_file = True
         fallback.degraded_from_unresolved = bool(result.unresolved_files)
         fallback.unresolved_files = result.unresolved_files
@@ -417,6 +438,7 @@ def run_rts_with_fallback(
             **fallback_kwargs,
             files_to_select=set(result.unresolved_files),
         )
+        _log_file_cache_status()
         result.affected_tests = sorted(
             set(result.affected_tests) | set(file_level.affected_tests)
         )

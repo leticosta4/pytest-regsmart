@@ -13,6 +13,7 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
+from . import graph_cache
 from .dynamic_dispatch import get_dynamic_method_dependencies
 from .git_manager import resolve_repo
 from .models import (
@@ -595,15 +596,12 @@ def get_dependency_graph(
     repo_path: str = ".",
     graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     deleted_files: tuple[str, ...] | list[str] = (),
+    cache_dir: str | None = None,
+    status: dict | None = None,
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
-    python_files = _readable_python_files(
-        _find_py_files(
-            working_dir,
-            include_stubs=graph_level == DIFF_LEVEL.FUNCTION,
-        )
-    )
+    files = _find_py_files(working_dir, include_stubs=graph_level == DIFF_LEVEL.FUNCTION)
 
     build = (
         _build_function_dependency_graph
@@ -613,17 +611,34 @@ def get_dependency_graph(
         )
     )
 
-    # unparseable files (templates, python2 code, intentionally bug fixtures
+    def _build_with_retries() -> DependencyGraph:
+        python_files = _readable_python_files(files)
+        # unparseable files (templates, python2 code, intentionally bug fixtures
     #  also crash pyan3 - this logic removes the offending
     # file and tries again, up to a limit of _MAX_SKIPPED_FILES
-    for _ in range(_MAX_SKIPPED_FILES + 1):
-        try:
-            return build(python_files, working_dir)
-        except SyntaxError as exc:
-            bad = os.path.normpath(exc.filename) if exc.filename else None
-            remaining = [f for f in python_files if os.path.normpath(f) != bad]
-            if bad is None or len(remaining) == len(python_files):
-                raise
-            _logger.warning("regsmart: ignorando %s no grafo de dependências (SyntaxError)", bad)
-            python_files = remaining
-    raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")
+        for _ in range(_MAX_SKIPPED_FILES + 1):
+            try:
+                return build(python_files, working_dir)
+            except SyntaxError as exc:
+                bad = os.path.normpath(exc.filename) if exc.filename else None
+                remaining = [f for f in python_files if os.path.normpath(f) != bad]
+                if bad is None or len(remaining) == len(python_files):
+                    raise
+                _logger.warning("regsmart: ignorando %s no grafo de dependências (SyntaxError)", bad)
+                python_files = remaining
+        raise RuntimeError(f"mais de {_MAX_SKIPPED_FILES} arquivos não puderam ser analisados pelo pyan3")
+
+    graph, cache_status = graph_cache.get_or_build(
+        cache_dir,
+        graph_level,
+        working_dir,
+        files,
+        _build_with_retries,
+        # The file-level graph keeps the import names of deleted modules (see
+        # _build_file_dependency_graph), so the diff's deleted files are part
+        # of that graph's key. The function-level graph does not use them.
+        deleted_files=deleted_files if graph_level == DIFF_LEVEL.FILE else (),
+    )
+    if status is not None:
+        status[graph_level.value] = cache_status
+    return graph
