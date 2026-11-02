@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -137,21 +138,44 @@ def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
     return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
-def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
-    items[:] = (
-        [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
-        if diff_level == DIFF_LEVEL.FILE
-        else [
-            item
-            for item in items
-            if any(
-                item.nodeid == selected_node
-                or item.nodeid.startswith(f"{selected_node}[")
-                or item.nodeid.startswith(f"{selected_node}::")
-                for selected_node in selected_nodes
-            )
-        ]
+_NODEID_BOUNDARY = re.compile(r"\[|::")
+
+
+def _nodeid_candidates(nodeid: str):
+    """Yield ``nodeid`` and each prefix that ends right before ``[`` or ``::``.
+
+    A selected node matches an item when it equals the item's nodeid or when
+    the nodeid starts with the selected node followed by ``[`` (parametrized
+    variant) or ``::`` (member of a selected class/module). Those are exactly
+    the prefixes yielded here, so a set lookup per candidate replaces the
+    comparison against every selected node.
+    """
+    yield nodeid
+    for boundary in _NODEID_BOUNDARY.finditer(nodeid):
+        yield nodeid[: boundary.start()]
+
+
+def _matches_function_selection(nodeid: str, selected_nodes: set[str]) -> bool:
+    return any(
+        candidate in selected_nodes for candidate in _nodeid_candidates(nodeid)
     )
+
+
+def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
+    # ``item.nodeid`` is read once per item; the selection is looked up in a set
+    # instead of being scanned for every item (O(items x selected) before).
+    if not isinstance(selected_nodes, (set, frozenset)):
+        selected_nodes = set(selected_nodes)
+    if diff_level == DIFF_LEVEL.FILE:
+        items[:] = [
+            item for item in items if item.nodeid.split("::")[0] in selected_nodes
+        ]
+        return
+    items[:] = [
+        item
+        for item in items
+        if _matches_function_selection(item.nodeid, selected_nodes)
+    ]
 
 
 def run_rts(
