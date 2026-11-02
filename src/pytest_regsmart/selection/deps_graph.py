@@ -11,6 +11,7 @@ from pyan.node import Flavor
 from pytest_regsmart.const import DEFAULT_DIFF_LEVEL, DIFF_LEVEL
 
 from ..utils import _find_py_files
+from .dynamic_dispatch import get_dynamic_method_dependencies
 from .git_manager import resolve_repo
 from .models import (
     _KEPT_FLAVORS,
@@ -23,6 +24,7 @@ from .models import (
     ModuleToPath,
     _ModuleQualifiedCallGraphVisitor,
 )
+from .subprocess_analysis import find_nested_pytest_tests
 
 _logger = logging.getLogger(__name__)
 
@@ -270,6 +272,12 @@ def _build_function_dependency_graph(
 
     function_nodes, functions_by_files = _extract_function_nodes(graph, working_dir)
 
+    # The child process has a separate call graph; keep the discovery logic out
+    # of this module so graph construction remains focused on dependency edges.
+    subprocess_tests = find_nested_pytest_tests(
+        python_files, graph.module_to_filename, function_nodes
+    )
+
     function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
 
     for function_node, dependency_nodes in graph.uses_edges.items():
@@ -316,12 +324,53 @@ def _build_function_dependency_graph(
             ):
                 function_dependencies[class_id].add(member_id)
 
+    # pyan resolves the statically visible method on ``self``/``cls``. Add
+    # conservative dynamic-dispatch edges for overrides in known subclasses,
+    # and resolve calls on locals that are directly constructed in a function.
+    # This is deliberately a single-function analysis: it does not propagate
+    # inferred types across calls or guess from method names alone.
+    def resolve_imported_class(
+        module_name: str,
+        symbol_name: str,
+        local_scope: str | None,
+    ) -> str | None:
+        scope_names = (
+            local_scope,
+            stub_modules.get(module_name),
+            module_name,
+            f"{module_name}.__init__",
+        )
+        for scope_name in scope_names:
+            scope = graph.scopes.get(scope_name) if scope_name else None
+            binding = scope.defs.get(symbol_name) if scope is not None else None
+            if binding is not None:
+                resolved = _resolve_imported_function(
+                    binding, graph, function_nodes, stub_modules
+                )
+                if resolved:
+                    return resolved
+        return None
+
+    try:
+        dynamic_dependencies = get_dynamic_method_dependencies(
+            python_files, graph, function_nodes, resolve_imported_class
+        )
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "regsmart: ignoring inheritance-based dependencies (%s)",
+            type(exc).__name__,
+        )
+    else:
+        for caller, targets in dynamic_dependencies.items():
+            function_dependencies[caller].update(targets)
+
     dependents = _invert_dependency_map(function_dependencies) #function_dependencies already have the function names, so no need to convert to paths
 
     return DependencyGraph(
         dependents=dependents,
         function_nodes=function_nodes,
-        functions_by_file=functions_by_files
+        functions_by_file=functions_by_files,
+        subprocess_tests=subprocess_tests,
     )
 
 
