@@ -114,7 +114,9 @@ def _resolve_qualified_function_target(
                 continue
             current = module_name
             for part in parts[module_end:]:
-                current = exports.get((current, part), f"{current}.{part}")
+                current = _follow_export(
+                    exports, exports.get((current, part), f"{current}.{part}")
+                )
             if current in function_nodes:
                 return current
 
@@ -160,6 +162,19 @@ def _resolve_qualified_function_target(
                     if resolved is not None:
                         return resolved
     return None
+
+
+def _follow_export(exports: dict[tuple[str, str], str], name: str) -> str:
+    """Follow chained bindings (re-export of an alias of a function)."""
+    seen = set()
+    while name not in seen:
+        seen.add(name)
+        module, _, attr = name.rpartition(".")
+        nxt = exports.get((module, attr)) if module else None
+        if nxt is None or nxt == name:
+            break
+        name = nxt
+    return name
 
 
 def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
@@ -217,10 +232,12 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
                 value = dotted_name(statement.value)
                 if value is None:
                     continue
-                target = value
                 first, dot, remainder = value.partition(".")
+                # A bare or dotted name is looked up in this module's scope
+                # first (``clustering = latapy_clustering``).
+                target = bindings.get((module, first), f"{module}.{first}")
                 if dot:
-                    target = bindings.get((module, first), first) + "." + remainder
+                    target = f"{target}.{remainder}"
                 for item in statement.targets:
                     if isinstance(item, ast.Name):
                         bindings[(module, item.id)] = target

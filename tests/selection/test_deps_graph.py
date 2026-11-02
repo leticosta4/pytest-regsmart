@@ -631,6 +631,39 @@ def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path)
     ]
 
 
+def test_function_graph_follows_reexported_function_alias(tmp_path):
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .cluster import *\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/cluster.py",
+        "__all__ = ['clustering', 'latapy_clustering']\n"
+        "def latapy_clustering(graph):\n    return 0\n"
+        "clustering = latapy_clustering\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_cluster.py",
+        "import networkx as nx\n"
+        "def test_alias_through_reexport():\n    nx.bipartite.clustering(None)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_cluster.test_alias_through_reexport" in graph.dependents[
+        "networkx.bipartite.cluster.latapy_clustering"
+    ]
+
+
 def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
     _write(
         tmp_path,
