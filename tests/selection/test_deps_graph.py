@@ -879,7 +879,7 @@ def test_get_dependency_graph_retries_without_the_offending_file(git_repo, monke
     good = _write(root, "good.py", "x = 1\n")
     received_file_lists = []
 
-    def _fake_build(python_files, working_dir):
+    def _fake_build(python_files, working_dir, deleted_files=()):
         received_file_lists.append(set(python_files))
         if str(bad) in python_files:
             raise SyntaxError("invalid syntax", (str(bad), 1, 1, str(bad)))

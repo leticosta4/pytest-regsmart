@@ -24,11 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.1] - 2026-10-26
 
 ### Added
+- Flag deleted files in the diff result so their dependent tests can be considered by selection
+- Track changed files that the function-level selection cannot resolve — hunks outside every function/class, deleted functions or files, modules without functions, files absent from the graph — in the `SelectionResult`
+- For unresolved files, add their file-level dependents to any tests already selected at function level
 - Add remote branches fallback to `--local-diff` flag when value is True
 ### Security
 - Bump virtualenv from version 21.7.13 to 21.14.9 ([Dependabot Alerts](https://github.com/leticosta4/pytest-regsmart/security/dependabot?q=is%3Aclosed+package%3Avirtualenv))
 - Bump uv from version 0.12.5 to 0.13.5 ([Dependabot Alert](https://github.com/leticosta4/pytest-regsmart/security/dependabot/12))
 ### Fixed
+- Deleting a function/class or an assumed-empty module no longer silently drops its dependent tests: file-level dependents are added when function-level selection cannot resolve the deletion (dependents reached only through *lazy imports* may remain outside both graphs)
 - With `pytest-xdist`, the summary now includes selection and prioritization timings, the comparison branch, and warnings collected by workers. Timings report the slowest worker duration.
 - Function-level test selection now recognizes qualified calls through imported modules (for example, `pkg.feature.inverse.mel_to_audio()`), including APIs exposed through dynamic package attributes, so changes in the called function can reach the tests that exercise it.
 ## [0.8.0] - 2026-10-16

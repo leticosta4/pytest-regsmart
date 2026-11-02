@@ -18,6 +18,7 @@ class DiffResult:
     untracked_files: list[str] = field(default_factory=list) #brand new files - maybe add a future flag to look only at unstaged+untracked tests
     deleted_files: list[str] = field(default_factory=list)
     changed_line_ranges: ChangedLineRanges = field(default_factory=dict)  #only for DIFF_LEVEL.FUNCTION
+    pure_deletion_files: set[str] = field(default_factory=set)
     no_merge_base: bool = False  #base resolved, but no shared history with HEAD
 
 

@@ -248,13 +248,22 @@ def _invert_dependency_map(
 def _build_file_dependency_graph(
     python_files: list[str],
     working_dir: str,
+    deleted_files: tuple[str, ...] | list[str] = (),
 ) -> DependencyGraph:
     graph = ImportVisitor(filenames=python_files, logger=logging.getLogger(__name__), root=working_dir)
     #graph.modules: module -> set of modules imported by it
     #graph.fullpaths: module -> absolute file path
 
+    # Keep deleted modules in the import-name map. ImportVisitor still sees
+    # their imports from surviving files, but cannot map those names to paths
+    # because the deleted source is no longer on disk.
+    fullpaths = dict(graph.fullpaths)
+    for rel_path in deleted_files:
+        module = os.path.splitext(rel_path)[0].replace(os.sep, ".")
+        fullpaths.setdefault(module, os.path.join(working_dir, rel_path))
+
     module_to_path = _convert_module_to_relative_path(graph.fullpaths, working_dir)
-    import_name_to_path = _build_import_name_to_path(graph.fullpaths, working_dir)
+    import_name_to_path = _build_import_name_to_path(fullpaths, working_dir)
     dependents = _invert_dependency_map(graph.modules, module_to_path, import_name_to_path)  # invert so it becomes module -> who IMPORTS it / who is affected by it
 
     return DependencyGraph(dependents=dependents)
@@ -371,6 +380,7 @@ def _readable_python_files(python_files: list[str]) -> list[str]:
 def get_dependency_graph(
     repo_path: str = ".",
     graph_level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
+    deleted_files: tuple[str, ...] | list[str] = (),
 ) -> DependencyGraph:
     repo = resolve_repo(repo_path)
     working_dir = repo.working_tree_dir
@@ -384,7 +394,9 @@ def get_dependency_graph(
     build = (
         _build_function_dependency_graph
         if graph_level == DIFF_LEVEL.FUNCTION
-        else _build_file_dependency_graph
+        else lambda files, root: _build_file_dependency_graph(
+            files, root, deleted_files=deleted_files
+        )
     )
 
     # unparseable files (templates, python2 code, intentionally bug fixtures
