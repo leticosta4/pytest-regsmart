@@ -154,7 +154,8 @@ def _resolve_qualified_function_target(
             elif binding.flavor == Flavor.IMPORTEDITEM:
                 next_module = _normalize_pyan_module_name(
                     f"{binding.namespace}.{binding.name}"
-                    if binding.namespace else binding.name
+                    if binding.namespace
+                    else binding.name
                 )
             if next_module is not None:
                 nested = ".".join([next_module, *symbol_path[1:]])
@@ -207,9 +208,14 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
                 tree = ast.parse(source.read(), filename=path)
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        package = module if os.path.basename(path) == "__init__.py" else module.rpartition(".")[0]
+        is_package = os.path.basename(path) == "__init__.py"
+        package = module if is_package else module.rpartition(".")[0]
+        # Only top-level statements are indexed. Bindings created inside
+        # ``try``/``if`` blocks are left to pyan's own resolution.
         for statement in tree.body:
-            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if isinstance(
+                statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
                 bindings[(module, statement.name)] = f"{module}.{statement.name}"
             elif isinstance(statement, ast.Import):
                 for alias in statement.names:
@@ -218,19 +224,25 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
                     bindings[(module, bound)] = target
             elif isinstance(statement, ast.ImportFrom):
                 try:
-                    imported_module = importlib.util.resolve_name(
-                        "." * statement.level + (statement.module or ""), package
-                    ) if statement.level else (statement.module or "")
+                    imported_module = (
+                        importlib.util.resolve_name(
+                            "." * statement.level + (statement.module or ""), package
+                        )
+                        if statement.level
+                        else (statement.module or "")
+                    )
                 except (ImportError, ValueError):
                     continue
                 for alias in statement.names:
                     if alias.name == "*":
                         stars.append((module, imported_module))
                         continue
-                    target_module = f"{imported_module}.{alias.name}" if imported_module else alias.name
-                    target = (target_module if target_module in modules
-                              else f"{imported_module}.{alias.name}" if imported_module
-                              else alias.name)
+                    # Either a submodule or a symbol of ``imported_module``.
+                    target = (
+                        f"{imported_module}.{alias.name}"
+                        if imported_module
+                        else alias.name
+                    )
                     bindings[(module, alias.asname or alias.name)] = target
             elif isinstance(statement, ast.Assign):
                 value = dotted_name(statement.value)
@@ -245,10 +257,20 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
                 for item in statement.targets:
                     if isinstance(item, ast.Name):
                         bindings[(module, item.id)] = target
-            elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-                value = dotted_name(statement.value) if statement.value is not None else None
+            elif isinstance(statement, ast.AnnAssign) and isinstance(
+                statement.target, ast.Name
+            ):
+                value = (
+                    dotted_name(statement.value)
+                    if statement.value is not None
+                    else None
+                )
                 if value:
-                    bindings[(module, statement.target.id)] = value
+                    first, dot, remainder = value.partition(".")
+                    target = bindings.get((module, first), f"{module}.{first}")
+                    if dot:
+                        target = f"{target}.{remainder}"
+                    bindings[(module, statement.target.id)] = target
         for statement in tree.body:
             if isinstance(statement, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id == "__all__"
@@ -256,7 +278,9 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
             ):
                 try:
                     value = ast.literal_eval(statement.value)
-                    if isinstance(value, (list, tuple, set)) and all(isinstance(x, str) for x in value):
+                    if isinstance(value, (list, tuple, set)) and all(
+                        isinstance(x, str) for x in value
+                    ):
                         explicit_exports[module] = set(value)
                 except (ValueError, TypeError):
                     pass

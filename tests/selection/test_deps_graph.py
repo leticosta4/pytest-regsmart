@@ -591,7 +591,11 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
 
 
 def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path):
-    _write(tmp_path, "networkx/__init__.py", "from . import bipartite\nfrom .bipartite import *\n")
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\nfrom .bipartite import *\n",
+    )
     _write(
         tmp_path,
         "networkx/bipartite/__init__.py",
