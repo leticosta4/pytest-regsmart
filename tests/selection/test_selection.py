@@ -14,6 +14,7 @@ from src.pytest_regsmart.selection.selector import (
     SELECTION_TIME_KEY,
     SELECTION_TIME_KEY_FILE_LEVEL,
     SelectionResult,
+    _add_collected_fixture_edges,
     _function_id_to_pytest_nodeid,
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
@@ -64,6 +65,62 @@ def test_function_level_selection_returns_pytest_nodeids():
     result = _get_affected_tests_at_function_level(diff_result, deps_graph)
 
     assert result == ["tests/test_app.py::test_run"]
+
+
+def test_collected_fixture_closure_links_fixture_to_test(tmp_path, monkeypatch):
+    fixture_path = tmp_path / "conftest.py"
+    fixture_path.write_text("def settings():\n    return object()\n")
+    test_path = tmp_path / "test_settings.py"
+    test_path.write_text("def test_assign(settings):\n    settings.value = 1\n")
+    monkeypatch.chdir(tmp_path)
+
+    class FixtureDef:
+        func = __import__("runpy").run_path(str(fixture_path))["settings"]
+
+    class FixtureInfo:
+        def __init__(self):
+            self.name2fixturedefs = {"settings": [FixtureDef()]}
+
+    class Item:
+        path = test_path
+        nodeid = "test_settings.py::test_assign"
+        def __init__(self):
+            self._fixtureinfo = FixtureInfo()
+
+    graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "conftest.settings": FunctionMetadata("conftest.py", 1, 2),
+            "test_settings.test_assign": FunctionMetadata("test_settings.py", 1, 2),
+        },
+    )
+
+    _add_collected_fixture_edges([Item()], graph)
+
+    assert graph.dependents["conftest.settings"] == {"test_settings.test_assign"}
+
+
+def test_function_level_selection_keeps_tests_that_run_nested_pytest():
+    deps_graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "app.service.run": FunctionMetadata("app/service.py", 1, 2),
+            "tests.test_nested.TestIntegration.test_child": FunctionMetadata(
+                "tests/test_nested.py", 3, 5
+            ),
+        },
+        functions_by_file={"app/service.py": {"app.service.run"}},
+        subprocess_tests={"tests.test_nested.TestIntegration.test_child"},
+    )
+    diff_result = DiffResult(
+        modified_files=["app/service.py"],
+        used_branch="main",
+        changed_line_ranges={"app/service.py": [(1, 1)]},
+    )
+
+    result = _get_affected_tests_at_function_level(diff_result, deps_graph)
+
+    assert result == ["tests/test_nested.py::TestIntegration::test_child"]
 
 
 # ---------------------------------------------------------------------------
