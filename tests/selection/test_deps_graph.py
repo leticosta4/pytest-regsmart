@@ -590,6 +590,84 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
     )
 
 
+def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path):
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\nfrom .bipartite import *\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .basic import *\nfrom .algorithms import clustering\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/basic.py",
+        "__all__ = ['is_bipartite']\n"
+        "def is_bipartite(graph):\n    return True\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/algorithms.py",
+        "from .basic import is_bipartite\n"
+        "def clustering(graph):\n    return is_bipartite(graph)\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_bipartite.py",
+        "import networkx as nx\n"
+        "def test_root_reexport():\n    nx.is_bipartite(None)\n"
+        "def test_submodule_reexport():\n    nx.bipartite.is_bipartite(None)\n"
+        "def test_intermediate_algorithm():\n    nx.bipartite.clustering(None)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert graph.dependents["networkx.bipartite.basic.is_bipartite"] == {
+        "tests.test_bipartite.test_root_reexport",
+        "tests.test_bipartite.test_submodule_reexport",
+        "networkx.bipartite.algorithms.clustering",
+    }
+    assert "tests.test_bipartite.test_intermediate_algorithm" in graph.dependents[
+        "networkx.bipartite.algorithms.clustering"
+    ]
+
+
+def test_function_graph_follows_reexported_function_alias(tmp_path):
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .cluster import *\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/cluster.py",
+        "__all__ = ['clustering', 'latapy_clustering']\n"
+        "def latapy_clustering(graph):\n    return 0\n"
+        "clustering = latapy_clustering\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_cluster.py",
+        "import networkx as nx\n"
+        "def test_alias_through_reexport():\n    nx.bipartite.clustering(None)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_cluster.test_alias_through_reexport" in graph.dependents[
+        "networkx.bipartite.cluster.latapy_clustering"
+    ]
+
+
 def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
     _write(
         tmp_path,
@@ -622,7 +700,9 @@ def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
     assert "tests.test_api.test_inherited_api" in graph.dependents[
         "pkg.api.Base.run"
     ]
-    assert "pkg.api.Unrelated.compute" not in graph.dependents
+    assert "tests.test_api.test_inherited_api" not in graph.dependents.get(
+        "pkg.api.Unrelated.compute", set()
+    )
 
 
 def test_function_graph_resolves_inline_instance_of_inherited_api(tmp_path):
