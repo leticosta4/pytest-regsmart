@@ -49,6 +49,7 @@ class PluginRunner:  #pytest hooks
             level=plugin.diff_level,
             log_dict=self.log,
             diff_source=plugin.diff_source,
+            items=items,
         )
         plugin.branch = selection.branch
  
