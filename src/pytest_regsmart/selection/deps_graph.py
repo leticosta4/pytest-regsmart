@@ -99,18 +99,21 @@ def _resolve_qualified_function_target(
     function_nodes: FunctionNodes,
     stub_modules: dict[str, str],
     exports: dict[tuple[str, str], str] | None = None,
+    export_modules: set[str] | None = None,
 ) -> str | None:
     """Resolve a qualified public name to a function node without name-only matching."""
     if target_name in function_nodes:
         return target_name
 
     if exports:
+        if export_modules is None:
+            export_modules = {module for module, _ in exports}
         # Walk module and symbol bindings one attribute at a time. A binding
         # can point to a re-exported function or to another module.
         parts = target_name.split(".")
         for module_end in range(len(parts) - 1, 0, -1):
             module_name = ".".join(parts[:module_end])
-            if module_name not in {m for m, _ in exports}:
+            if module_name not in export_modules:
                 continue
             current = module_name
             for part in parts[module_end:]:
@@ -157,7 +160,8 @@ def _resolve_qualified_function_target(
                 nested = ".".join([next_module, *symbol_path[1:]])
                 if nested != target_name:
                     resolved = _resolve_qualified_function_target(
-                        nested, graph, function_nodes, stub_modules, exports
+                        nested, graph, function_nodes, stub_modules, exports,
+                        export_modules,
                     )
                     if resolved is not None:
                         return resolved
@@ -263,18 +267,24 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
         parent, _, child = module.rpartition(".")
         if parent:
             bindings.setdefault((parent, child), module)
+    # Two star imports may export the same name with different targets (e.g.
+    # ``networkx.community``); the last one wins, as in Python, so convergence
+    # is checked on the whole mapping after each pass, not per assignment.
     for _ in range(len(modules) + 1):
-        changed = False
+        before = dict(bindings)
+        public: dict[str, set[str]] = defaultdict(set)
+        for mod, name in bindings:
+            if not name.startswith("_"):
+                public[mod].add(name)
         for destination, source in stars:
             names = explicit_exports.get(source)
             if names is None:
-                names = {name for mod, name in bindings if mod == source and not name.startswith("_")}
+                names = public.get(source, set())
             for name in names:
-                target = bindings.get((source, name), f"{source}.{name}")
-                if bindings.get((destination, name)) != target:
-                    bindings[(destination, name)] = target
-                    changed = True
-        if not changed:
+                bindings[(destination, name)] = bindings.get(
+                    (source, name), f"{source}.{name}"
+                )
+        if bindings == before:
             break
     return bindings
 
@@ -449,6 +459,7 @@ def _build_function_dependency_graph(
 
     stub_modules = _stub_modules_by_public_name(graph)
     export_index = _build_export_index(graph)
+    export_modules = {module for module, _ in export_index}
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
             continue
@@ -457,7 +468,8 @@ def _build_function_dependency_graph(
             continue
         # Resolve only qualified calls that pyan did not already represent.
         target = _resolve_qualified_function_target(
-            qualified_target, graph, function_nodes, stub_modules, export_index
+            qualified_target, graph, function_nodes, stub_modules, export_index,
+            export_modules,
         )
         if target is not None:
             function_dependencies[caller].add(target)
