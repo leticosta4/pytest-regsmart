@@ -336,14 +336,14 @@ wheels = [
 
 [[package]]
 name = "pyan3"
-version = "2.6.2"
+version = "2.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/f4/0fc2023b7971af8ab00e261ed59916be93ff7ae745f9d4e91de40cbf85ff/pyan3-2.6.2.tar.gz", hash = "sha256:ecb63d32ea28ec10caf22aad11310022a341c9bf5e8b9301e9a64ed3fe2edc91", size = 101955, upload-time = "2026-07-14T08:20:53.698Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/da/26d0a6696eec73ab1c18e9e4ed0f8c35fb91daec9cdc9ddc7bf6b2120cec/pyan3-2.8.1.tar.gz", hash = "sha256:1413399b243884e84a17fae37ab9aa1ec932d0e307090a6fbba0e162c360f049", size = 120428, upload-time = "2026-08-22T09:40:51.432Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/b6/6c4aadea4274657b5539c4d0365aba87d44ce12f4cf32556aee616187b80/pyan3-2.6.2-py3-none-any.whl", hash = "sha256:51b3f124286398f983e67bb1569074ca98047e51c420e9055376c56c9232c41e", size = 99491, upload-time = "2026-07-14T08:20:52.487Z" },
+    { url = "https://files.pythonhosted.org/packages/75/72/faf1f217c0c6b5045ab7e64a82b0208f96ef4ff0df37bb6cb1aa9c89422b/pyan3-2.8.1-py3-none-any.whl", hash = "sha256:12d8279adb004a7269407517c8a8648f793d9c612315ca43324c552fe2fe787a", size = 113004, upload-time = "2026-08-22T09:40:49.732Z" },
 ]
 
 [[package]]
@@ -385,7 +385,7 @@ wheels = [
 
 [[package]]
 name = "pytest-regsmart"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
@@ -407,7 +407,7 @@ dev = [
 requires-dist = [
     { name = "gitpython", specifier = ">=3.2.0" },
     { name = "numpy" },
-    { name = "pyan3", specifier = ">=1.2.0" },
+    { name = "pyan3", specifier = ">=2.8.0" },
     { name = "pytest", specifier = ">=9.0.3" },
 ]
 
