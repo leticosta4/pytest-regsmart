@@ -8,16 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
-### Fixed
-- Function-level selection now follows functions used as values, not only called: aliases (`f = pkg.mod.f`), call arguments (`pytest.raises(E, pkg.mod.f)`), list/dict elements, and names used in decorators such as `@pytest.mark.parametrize("fn", FUNCS)`. Module-level variables that hold such functions are expanded transitively, including variables imported from helper modules, so a test parametrized with a changed function is selected.
-### Changed
-- Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
 
 ## [0.9.1] - 2026-11-02
 
+### Fixed
+- Function-level selection now follows functions used as values, not only called: aliases (`f = pkg.mod.f`), call arguments (`pytest.raises(E, pkg.mod.f)`), list/dict elements, and names used in decorators such as `@pytest.mark.parametrize("fn", FUNCS)`. Module-level variables that hold such functions are expanded transitively, including variables imported from helper modules, so a test parametrized with a changed function is selected.
 ### Added
 - Compatibility with python 3.15
 ### Changed
+- Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
 - Bump pyan3 version from 2.6.2 to 2.8.1 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
 
 ## [0.9.0] - 2026-11-01
