@@ -755,3 +755,95 @@ def test_fallback_forwards_diff_source_to_selection(monkeypatch):
     run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
 
     assert seen == [WORKTREE]
+
+
+def _add_collected_fixture_edges_oracle(items, deps_graph):
+    """Implementation before the per-name index, kept as an oracle."""
+    import os
+
+    by_location = {}
+    for function_id, metadata in deps_graph.function_nodes.items():
+        by_location.setdefault(
+            (os.path.normpath(metadata.filepath), function_id.rsplit(".", 1)[-1]), set()
+        ).add(function_id)
+    for item in items:
+        test_path = os.path.normpath(str(item.path))
+        test_name = item.nodeid.split("::")[-1].split("[")[0]
+        test_ids = by_location.get((test_path, test_name), set())
+        if not test_ids:
+            test_ids = {
+                fid for fid, metadata in deps_graph.function_nodes.items()
+                if metadata.filepath.endswith(test_path.replace(os.sep, "/").split("/")[-1])
+                and fid.rsplit(".", 1)[-1] == test_name
+            }
+        if not test_ids:
+            continue
+        definitions = getattr(item._fixtureinfo, "name2fixturedefs", {}) or {}
+        fixture_functions = set()
+        for fixturedefs in definitions.values():
+            for fixturedef in fixturedefs or ():
+                func = fixturedef.func
+                fixture_path = os.path.relpath(func.__code__.co_filename, os.getcwd())
+                fixture_functions.update(
+                    by_location.get((os.path.normpath(fixture_path), func.__name__), ())
+                )
+        for fixture_id in fixture_functions:
+            deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
+
+
+def test_collected_fixture_edges_match_previous_implementation(tmp_path, monkeypatch):
+    import copy
+    import runpy
+
+    (tmp_path / "tests" / "unit").mkdir(parents=True)
+    conftest = tmp_path / "tests" / "conftest.py"
+    conftest.write_text(
+        "def db():\n    return 1\n\n\ndef settings():\n    return 2\n\n\ndef cache():\n    return 3\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    fixtures = runpy.run_path(str(conftest))
+
+    class FixtureDef:
+        def __init__(self, name):
+            self.func = fixtures[name]
+
+    class FixtureInfo:
+        def __init__(self, names):
+            self.name2fixturedefs = {name: [FixtureDef(name)] for name in names}
+
+    class Item:
+        def __init__(self, relpath, nodeid_tail, fixture_names):
+            # pytest gives absolute paths; graph paths are relative to the repo
+            self.path = tmp_path / relpath
+            self.nodeid = f"{relpath}::{nodeid_tail}"
+            self._fixtureinfo = FixtureInfo(fixture_names)
+
+    function_nodes = {
+        "tests.conftest.db": FunctionMetadata("tests/conftest.py", 1, 2),
+        "tests.conftest.settings": FunctionMetadata("tests/conftest.py", 5, 6),
+        "tests.conftest.cache": FunctionMetadata("tests/conftest.py", 9, 10),
+        "tests.test_api.test_get": FunctionMetadata("tests/test_api.py", 1, 2),
+        "tests.test_api.TestPost.test_create": FunctionMetadata("tests/test_api.py", 4, 6),
+        "tests.unit.test_api.test_get": FunctionMetadata("tests/unit/test_api.py", 1, 2),
+        "tests.unit.test_models.test_save": FunctionMetadata("tests/unit/test_models.py", 1, 2),
+        "tests.unit.test_models.TestModel.test_save": FunctionMetadata(
+            "tests/unit/test_models.py", 4, 6
+        ),
+    }
+    items = [
+        Item("tests/test_api.py", "test_get[a]", ["db"]),
+        Item("tests/test_api.py", "test_get[b]", ["db", "settings"]),
+        Item("tests/test_api.py", "TestPost::test_create", ["settings"]),
+        Item("tests/unit/test_api.py", "test_get", ["cache"]),
+        Item("tests/unit/test_models.py", "test_save[x-1]", ["db", "cache"]),
+        Item("tests/unit/test_models.py", "TestModel::test_save", ["settings"]),
+        Item("tests/unit/test_models.py", "test_missing", ["db"]),
+    ]
+    graph = DependencyGraph(dependents={"tests.conftest.db": {"x.y"}}, function_nodes=function_nodes)
+    expected = copy.deepcopy(graph)
+
+    _add_collected_fixture_edges(items, graph)
+    _add_collected_fixture_edges_oracle(items, expected)
+
+    assert graph.dependents == expected.dependents
+    assert graph.dependents["tests.conftest.db"] >= {"x.y", "tests.test_api.test_get"}

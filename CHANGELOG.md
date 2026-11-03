@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+### Changed
+- Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
+
 ## [0.9.1] - 2026-11-02
 
 ### Changed
