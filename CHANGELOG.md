@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
+- Function-level graph construction no longer formats every pyan scope in a debug message once per file and pass, reuses the module ASTs pyan already parsed in the re-export, inheritance and nested-pytest analyses, skips files without `runpytest` in the nested-pytest analysis, and looks up class members per file. The dependency graph is the same; on networkx building it drops from ~67 s to ~55 s.
 
 ## [0.9.1] - 2026-11-02
 

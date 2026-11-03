@@ -1025,3 +1025,60 @@ def test_get_dependency_graph_propagates_other_errors(git_repo, monkeypatch):
 
     with raises(ValueError, match="boom"):
         get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+
+def test_module_trees_are_the_asts_pyan_parsed(tmp_path):
+    import ast
+
+    from src.pytest_regsmart.selection.deps_graph import _module_trees
+    from src.pytest_regsmart.selection.models import (
+        _ModuleQualifiedCallGraphVisitor,
+        _QuietScopes,
+    )
+
+    files = [
+        _write(tmp_path, "pkg/__init__.py", "from .core import run\n"),
+        _write(
+            tmp_path,
+            "pkg/core.py",
+            "import os\n\n\nclass Base:\n    def run(self):\n        return [lambda x: x for _ in range(2)]\n\n\n"
+            "def run(value: int = 1):\n    return Base().run(), os.sep, {k: v for k, v in {}.items()}\n",
+        ),
+        _write(tmp_path, "tests/test_core.py", "from pkg.core import run\n\n\ndef test_run():\n    assert run()\n"),
+    ]
+    graph = _ModuleQualifiedCallGraphVisitor(
+        filenames=[str(f) for f in files], root=str(tmp_path), logger=logging.getLogger(__name__)
+    )
+
+    trees = _module_trees(graph)
+
+    # pyan keeps an unmodified ast.Module per analyzed file, so the plugin's
+    # own AST passes can reuse it instead of parsing the file again.
+    assert set(trees) == {os.path.normpath(os.path.abspath(f)) for f in files}
+    for path in files:
+        fresh = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        assert ast.dump(trees[os.path.normpath(os.path.abspath(path))]) == ast.dump(fresh)
+
+    # The scopes mapping keeps dict behaviour, with a constant-size repr.
+    assert isinstance(graph.scopes, _QuietScopes)
+    assert "pkg.core" in graph.scopes
+    assert repr(graph.scopes) == f"<{len(graph.scopes)} scopes>"
+
+
+@mark.parametrize(
+    "source",
+    ["a", "a.b", "pkg.mod.Klass", "f()", "f().x", "a[0]", "a.b[0].c", "'Klass'", "x.y()", "(a or b).c", "obj.attr.method"],
+)
+def test_dotted_name_matches_unparse_for_name_chains(source):
+    import ast
+
+    from src.pytest_regsmart.selection.dynamic_dispatch import _dotted_name
+
+    expression = ast.parse(source, mode="eval").body
+    node = expression
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    if isinstance(node, ast.Name):
+        assert _dotted_name(expression) == ast.unparse(expression)
+    else:
+        assert _dotted_name(expression) is None
