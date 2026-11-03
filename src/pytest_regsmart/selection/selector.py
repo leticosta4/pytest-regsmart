@@ -98,21 +98,34 @@ def _add_collected_fixture_edges(items: list, deps_graph: DependencyGraph) -> No
     trying to infer fixture names or types from test annotations.
     """
     by_location: dict[tuple[str, str], set[str]] = {}
+    by_name: dict[str, list[tuple[str, str]]] = {}
     for function_id, metadata in deps_graph.function_nodes.items():
-        by_location.setdefault((os.path.normpath(metadata.filepath), function_id.rsplit(".", 1)[-1]), set()).add(function_id)
+        name = function_id.rsplit(".", 1)[-1]
+        by_location.setdefault((os.path.normpath(metadata.filepath), name), set()).add(function_id)
+        by_name.setdefault(name, []).append((function_id, metadata.filepath))
+
+    # Parametrized variants and tests of the same file share these lookups:
+    # resolve each (test file, test name) and each fixture function once.
+    test_ids_cache: dict[tuple[str, str], set[str]] = {}
+    fixture_ids_cache: dict[tuple[str, str], set[str]] = {}
+    cwd = os.getcwd()
 
     for item in items:
         test_path = os.path.normpath(str(item.path))
         test_name = item.nodeid.split("::")[-1].split("[")[0]
-        test_ids = by_location.get((test_path, test_name), set())
-        if not test_ids:
-            # Graph paths are relative to the repository; pytest paths may be
-            # absolute. Match by suffix while retaining the function name.
-            test_ids = {
-                fid for fid, metadata in deps_graph.function_nodes.items()
-                if metadata.filepath.endswith(test_path.replace(os.sep, "/").split("/")[-1])
-                and fid.rsplit(".", 1)[-1] == test_name
-            }
+        test_key = (test_path, test_name)
+        test_ids = test_ids_cache.get(test_key)
+        if test_ids is None:
+            test_ids = by_location.get(test_key, set())
+            if not test_ids:
+                # Graph paths are relative to the repository; pytest paths may be
+                # absolute. Match by suffix while retaining the function name.
+                basename = test_path.replace(os.sep, "/").split("/")[-1]
+                test_ids = {
+                    fid for fid, filepath in by_name.get(test_name, ())
+                    if filepath.endswith(basename)
+                }
+            test_ids_cache[test_key] = test_ids
         if not test_ids:
             continue
         fixtureinfo = getattr(item, "_fixtureinfo", None)
@@ -126,11 +139,19 @@ def _add_collected_fixture_edges(items: list, deps_graph: DependencyGraph) -> No
                 code = getattr(func, "__code__", None)
                 if code is None:
                     continue
-                try:
-                    fixture_path = os.path.relpath(code.co_filename, os.getcwd())
-                except ValueError:
-                    continue
-                fixture_functions.update(by_location.get((os.path.normpath(fixture_path), func.__name__), ()))
+                fixture_key = (code.co_filename, func.__name__)
+                fixture_ids = fixture_ids_cache.get(fixture_key)
+                if fixture_ids is None:
+                    try:
+                        fixture_path = os.path.relpath(code.co_filename, cwd)
+                    except ValueError:
+                        fixture_ids = set()
+                    else:
+                        fixture_ids = by_location.get(
+                            (os.path.normpath(fixture_path), func.__name__), set()
+                        )
+                    fixture_ids_cache[fixture_key] = fixture_ids
+                fixture_functions.update(fixture_ids)
         for fixture_id in fixture_functions:
             deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
 
