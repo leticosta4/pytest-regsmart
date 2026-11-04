@@ -40,6 +40,18 @@ def _import_bindings(
     }
 
 
+def _dotted_name(expression: ast.AST) -> str | None:
+    """``a.b.c`` for a Name/Attribute chain (as ``ast.unparse``), else ``None``."""
+    parts = []
+    while isinstance(expression, ast.Attribute):
+        parts.append(expression.attr)
+        expression = expression.value
+    if not isinstance(expression, ast.Name):
+        return None
+    parts.append(expression.id)
+    return ".".join(reversed(parts))
+
+
 class _DynamicDispatchVisitor(ast.NodeVisitor):
     def __init__(
         self,
@@ -67,7 +79,11 @@ class _DynamicDispatchVisitor(ast.NodeVisitor):
         self.dependencies: defaultdict[str, set[str]] = defaultdict(set)
 
     def _resolve_class(self, expression: ast.AST) -> str | None:
-        name = ast.unparse(expression)
+        # Only plain (dotted) names can name a class here; anything else
+        # (calls, subscripts, literals) never matched a known class or import.
+        name = _dotted_name(expression)
+        if name is None:
+            return None
         if name in self.classes:
             return name
         head, _, tail = name.partition(".")
@@ -201,6 +217,7 @@ def get_dynamic_method_dependencies(
     graph: CallGraphVisitor,
     function_nodes: FunctionNodes,
     resolve_imported_class: Callable[[str, str, str | None], str | None],
+    trees: dict[str, ast.Module] | None = None,
 ) -> dict[str, set[str]]:
     """Add function dependencies that follow known inheritance relationships."""
     module_by_path = {
@@ -229,15 +246,12 @@ def get_dynamic_method_dependencies(
                 descendants[parent].add(descendant)
                 pending.append(descendant)
 
-    methods = {
-        classname: {
-            name.removeprefix(f"{classname}.")
-            for name in function_nodes
-            if name.startswith(f"{classname}.")
-            and "." not in name.removeprefix(f"{classname}.")
-        }
-        for classname in class_nodes
-    }
+    # Direct members only: ``Class.method`` but not ``Class.method.inner``.
+    methods: dict[str, set[str]] = {classname: set() for classname in class_nodes}
+    for name in function_nodes:
+        owner, _, member = name.rpartition(".")
+        if owner in methods:
+            methods[owner].add(member)
     dependencies: defaultdict[str, set[str]] = defaultdict(set)
     for classname, children in descendants.items():
         if children:
@@ -248,15 +262,19 @@ def get_dynamic_method_dependencies(
                 if not method.startswith("_")
             )
 
+    class_names = set(class_nodes)
     for filepath in python_files:
-        module = module_by_path.get(os.path.normpath(os.path.abspath(filepath)))
+        path_key = os.path.normpath(os.path.abspath(filepath))
+        module = module_by_path.get(path_key)
         if module is None:
             continue
-        try:
-            with open(filepath, encoding="utf-8") as source:
-                tree = ast.parse(source.read(), filename=filepath)
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
+        tree = trees.get(path_key) if trees else None
+        if tree is None:
+            try:
+                with open(filepath, encoding="utf-8") as source:
+                    tree = ast.parse(source.read(), filename=filepath)
+            except (OSError, UnicodeDecodeError, SyntaxError):
+                continue
         is_package = os.path.basename(filepath) == "__init__.py"
         module_imports = {}
         for statement in tree.body:
@@ -265,7 +283,7 @@ def get_dynamic_method_dependencies(
         visitor = _DynamicDispatchVisitor(
             module,
             module_imports,
-            set(class_nodes),
+            class_names,
             bases,
             descendants,
             function_nodes,

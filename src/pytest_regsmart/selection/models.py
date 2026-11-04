@@ -72,6 +72,21 @@ class DependencyGraph:
     subprocess_tests: set[str] = field(default_factory=set)
 
 
+class _QuietScopes(dict):
+    """``dict`` of pyan scopes with a constant-size ``repr``.
+
+    pyan logs ``f"Scopes now: {self.scopes}"`` once per analyzed file and pass.
+    The f-string is built even when debug logging is off, so formatting every
+    scope seen so far makes graph construction quadratic in the number of
+    files. Only that message text changes; lookups behave as a plain dict.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return f"<{len(self)} scopes>"
+
+
 class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
     """CallGraphVisitor with a narrow fallback for qualified module references.
 
@@ -92,6 +107,18 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
         if isinstance(node.ctx, ast.Load):
             self._record_module_qualified(node)
         return super().visit_Attribute(node)
+
+    # pyan assigns ``self.scopes = {}`` during initialization; the property
+    # wraps whatever it assigns, independent of the pyan version.
+    @property
+    def scopes(self) -> dict:
+        return self.__dict__["_regsmart_scopes"]
+
+    @scopes.setter
+    def scopes(self, value: dict) -> None:
+        if not isinstance(value, _QuietScopes):
+            value = _QuietScopes(value)
+        self.__dict__["_regsmart_scopes"] = value
 
     def visit_Call(self, node: ast.Call):
         self._record_module_qualified(node.func)

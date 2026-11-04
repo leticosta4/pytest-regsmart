@@ -44,6 +44,7 @@ def find_nested_pytest_tests(
     python_files: list[str],
     module_to_filename: dict[str, str],
     function_nodes: FunctionNodes,
+    trees: dict[str, ast.Module] | None = None,
 ) -> set[str]:
     """Return function ids containing calls to pytester's nested-run helpers."""
     modules_by_path = {
@@ -57,9 +58,21 @@ def find_nested_pytest_tests(
             continue
         try:
             with open(filepath, encoding="utf-8") as source:
-                tree = ast.parse(source.read(), filename=filepath)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+                text = source.read()
+        except (OSError, UnicodeDecodeError):
             continue
+        # Both helper names contain "runpytest"; a file without that text
+        # cannot call them, so it does not need to be visited.
+        if "runpytest" not in text:
+            continue
+        tree = (
+            trees.get(os.path.normpath(os.path.abspath(filepath))) if trees else None
+        )
+        if tree is None:
+            try:
+                tree = ast.parse(text, filename=filepath)
+            except SyntaxError:
+                continue
 
         visitor = _NestedPytestVisitor(module_name, function_nodes)
         visitor.visit(tree)

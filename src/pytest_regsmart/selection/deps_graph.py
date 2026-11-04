@@ -182,7 +182,45 @@ def _follow_export(exports: dict[tuple[str, str], str], name: str) -> str:
     return name
 
 
-def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
+def _path_key(path: str) -> str:
+    return os.path.normpath(os.path.abspath(path))
+
+
+def _module_trees(graph: CallGraphVisitor) -> dict[str, ast.Module]:
+    """Module ASTs pyan already parsed, keyed by normalized absolute path.
+
+    pyan associates each analyzed file's ``ast.Module`` with its module node
+    and does not modify it, so the plugin's own AST passes can reuse it
+    instead of reading and parsing every file again.
+    """
+    trees: dict[str, ast.Module] = {}
+    for node_group in graph.nodes.values():
+        for node in node_group:
+            if (
+                node.flavor == Flavor.MODULE
+                and isinstance(node.ast_node, ast.Module)
+                and node.filename
+            ):
+                trees[_path_key(node.filename)] = node.ast_node
+    return trees
+
+
+def _parse_file(path: str, trees: dict[str, ast.Module] | None) -> ast.Module | None:
+    """Return the cached AST for ``path``, or parse it; ``None`` if unreadable."""
+    tree = trees.get(_path_key(path)) if trees else None
+    if tree is not None:
+        return tree
+    try:
+        with open(path, encoding="utf-8") as source:
+            return ast.parse(source.read(), filename=path)
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+
+
+def _build_export_index(
+    graph: CallGraphVisitor,
+    trees: dict[str, ast.Module] | None = None,
+) -> dict[tuple[str, str], str]:
     """Index module exports and import aliases once for qualified-call lookup."""
     modules = {
         _normalize_pyan_module_name(name): path
@@ -203,10 +241,8 @@ def _build_export_index(graph: CallGraphVisitor) -> dict[tuple[str, str], str]:
         return None
 
     for module, path in modules.items():
-        try:
-            with open(path, encoding="utf-8") as source:
-                tree = ast.parse(source.read(), filename=path)
-        except (OSError, SyntaxError, UnicodeDecodeError):
+        tree = _parse_file(path, trees)
+        if tree is None:
             continue
         is_package = os.path.basename(path) == "__init__.py"
         package = module if is_package else module.rpartition(".")[0]
@@ -509,6 +545,7 @@ def _add_value_reference_edges(
     function_nodes: FunctionNodes,
     function_dependencies: defaultdict[str, set[str]],
     resolve_qualified,
+    trees: dict[str, ast.Module] | None = None,
 ) -> None:
     """Link functions to the functions they use as values (#75).
 
@@ -520,10 +557,8 @@ def _add_value_reference_edges(
     for module_name, filename in graph.module_to_filename.items():
         if filename.endswith(".pyi"):
             continue
-        try:
-            with open(filename, encoding="utf-8") as source:
-                tree = ast.parse(source.read(), filename=filename)
-        except (OSError, SyntaxError, ValueError):
+        tree = _parse_file(filename, trees)
+        if tree is None:
             continue
         resolver.index_module(module_name, tree)
 
@@ -694,11 +729,12 @@ def _build_function_dependency_graph(
     )
 
     function_nodes, functions_by_files = _extract_function_nodes(graph, working_dir)
+    trees = _module_trees(graph)
 
     # The child process has a separate call graph; keep the discovery logic out
     # of this module so graph construction remains focused on dependency edges.
     subprocess_tests = find_nested_pytest_tests(
-        python_files, graph.module_to_filename, function_nodes
+        python_files, graph.module_to_filename, function_nodes, trees
     )
 
     function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
@@ -714,7 +750,7 @@ def _build_function_dependency_graph(
                 function_dependencies[function_name].add(dependency_name)
 
     stub_modules = _stub_modules_by_public_name(graph)
-    export_index = _build_export_index(graph)
+    export_index = _build_export_index(graph, trees)
     export_modules = {module for module, _ in export_index}
     # Many callers share the same qualified target (and Load-context references
     # also record every prefix of an attribute chain), so resolve each once.
@@ -741,7 +777,7 @@ def _build_function_dependency_graph(
 
     # Functions used as values: module variables and decorator arguments.
     _add_value_reference_edges(
-        graph, function_nodes, function_dependencies, resolve_qualified
+        graph, function_nodes, function_dependencies, resolve_qualified, trees
     )
 
     # A number of Python operations dispatch to a method without naming it in
@@ -757,11 +793,11 @@ def _build_function_dependency_graph(
     }
     for class_id in class_ids:
         class_path = function_nodes[class_id].filepath
-        for member_id, metadata in function_nodes.items():
-            if (
-                metadata.filepath == class_path
-                and member_id.startswith(f"{class_id}.")
-            ):
+        member_prefix = f"{class_id}."
+        # Members live in the same file as their class, so only that file's
+        # functions need to be checked (not every function of the project).
+        for member_id in functions_by_files.get(class_path, ()):
+            if member_id.startswith(member_prefix):
                 function_dependencies[class_id].add(member_id)
 
     # pyan resolves the statically visible method on ``self``/``cls``. Add
@@ -793,7 +829,7 @@ def _build_function_dependency_graph(
 
     try:
         dynamic_dependencies = get_dynamic_method_dependencies(
-            python_files, graph, function_nodes, resolve_imported_class
+            python_files, graph, function_nodes, resolve_imported_class, trees
         )
     except Exception as exc:  # noqa: BLE001
         _logger.warning(
