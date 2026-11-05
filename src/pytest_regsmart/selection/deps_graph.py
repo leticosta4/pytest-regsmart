@@ -580,6 +580,127 @@ def _add_value_reference_edges(
             function_dependencies[caller].update(targets)
 
 
+_MAX_MODULE_CHAIN_DEPTH = 8
+
+
+def _module_scope(graph: CallGraphVisitor, stub_modules: dict[str, str], module_name: str):
+    for scope_name in (stub_modules.get(module_name), module_name, f"{module_name}.__init__"):
+        if scope_name and scope_name in graph.scopes:
+            return graph.scopes[scope_name]
+    return None
+
+
+def _project_modules(graph: CallGraphVisitor) -> dict[str, str]:
+    """Map analyzed (non-stub) module names to their file paths."""
+    return {
+        _normalize_pyan_module_name(module_name): filename
+        for module_name, filename in graph.module_to_filename.items()
+        if not filename.endswith(".pyi")
+    }
+
+
+def _caller_package(caller: str, project_modules: dict[str, str]) -> str | None:
+    """Package that contains the module defining ``caller`` (longest prefix match)."""
+    parts = caller.split(".")
+    for end in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:end])
+        filename = project_modules.get(module_name)
+        if filename is None:
+            continue
+        if os.path.basename(filename) == "__init__.py":
+            return module_name
+        return module_name.rpartition(".")[0] or None
+    return None
+
+
+def _resolve_module_reference(
+    reference: str,
+    caller: str,
+    graph: CallGraphVisitor,
+    stub_modules: dict[str, str],
+    project_modules: dict[str, str],
+) -> str | None:
+    """Resolve a dotted reference to an analyzed project module, or None.
+
+    Module bindings are followed attribute by attribute (``g.trimesh.util`` when
+    the helper module ``g`` does ``import trimesh``). A root that is not a
+    project module is tried next to the caller, as Python does when the test
+    directory is on ``sys.path`` (``import generic as g`` -> ``tests.generic``).
+    Anything that ends in a function, class or value is not a module reference.
+    """
+    parts = reference.split(".")
+
+    def follow(module_name: str, attributes: list[str]) -> str | None:
+        for depth, attribute in enumerate(attributes):
+            if depth > _MAX_MODULE_CHAIN_DEPTH:
+                return None
+            scope = _module_scope(graph, stub_modules, module_name)
+            binding = scope.defs.get(attribute) if scope is not None else None
+            if binding is not None and binding.flavor == Flavor.MODULE:
+                module_name = _normalize_pyan_module_name(binding.get_name())
+            elif (
+                binding is not None
+                and binding.flavor == Flavor.IMPORTEDITEM
+                and binding.namespace is not None
+            ):
+                module_name = f"{_normalize_pyan_module_name(binding.namespace)}.{binding.name}"
+            elif f"{module_name}.{attribute}" in project_modules:
+                module_name = f"{module_name}.{attribute}"  # submodule attribute
+            else:
+                return None
+        return module_name if module_name in project_modules else None
+
+    for end in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:end])
+        if module_name in project_modules:
+            return follow(module_name, parts[end:])
+    package = _caller_package(caller, project_modules)
+    if package:
+        for end in range(len(parts), 0, -1):
+            module_name = f"{package}.{'.'.join(parts[:end])}"
+            if module_name in project_modules:
+                return follow(module_name, parts[end:])
+    return None
+
+
+def _add_module_argument_edges(
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    functions_by_files: FunctionsByFile,
+    function_dependencies: defaultdict[str, set[str]],
+    working_dir: str,
+) -> None:
+    """A project module passed as a call argument is exercised as a whole (#79).
+
+    ``doctest.testmod(pkg.mod)`` or ``inspect.getmembers(pkg.mod)`` run code of
+    ``pkg.mod`` without naming any of its functions, so the caller depends on
+    every function and class defined in that module. A plain ``pkg.mod.f``
+    reference still links only to ``f``.
+    """
+    module_arguments = getattr(graph, "module_arguments", ())
+    if not module_arguments:
+        return
+    stub_modules = _stub_modules_by_public_name(graph)
+    project_modules = _project_modules(graph)
+    resolved: dict[tuple[str, str], str | None] = {}
+    for caller, reference in module_arguments:
+        if caller not in function_nodes:
+            continue
+        package = _caller_package(caller, project_modules)
+        key = (package or "", reference)
+        if key not in resolved:
+            resolved[key] = _resolve_module_reference(
+                reference, caller, graph, stub_modules, project_modules
+            )
+        module_name = resolved[key]
+        if module_name is None:
+            continue
+        module_file = os.path.relpath(project_modules[module_name], working_dir)
+        function_dependencies[caller].update(
+            node for node in functions_by_files.get(module_file, ()) if node != caller
+        )
+
+
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
@@ -774,6 +895,10 @@ def _build_function_dependency_graph(
         target = resolve_qualified(qualified_target)
         if target is not None and target != caller:
             function_dependencies[caller].add(target)
+
+    _add_module_argument_edges(
+        graph, function_nodes, functions_by_files, function_dependencies, working_dir
+    )
 
     # Functions used as values: module variables and decorator arguments.
     _add_value_reference_edges(

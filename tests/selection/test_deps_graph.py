@@ -1274,3 +1274,82 @@ def test_dotted_name_matches_unparse_for_name_chains(source):
         assert _dotted_name(expression) == ast.unparse(expression)
     else:
         assert _dotted_name(expression) is None
+
+
+def _doctested_module(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/__init__.py", "from pkg import tr\n")
+    _write(
+        tmp_path,
+        "pkg/tr.py",
+        "def rot(x):\n    '''\n    >>> rot(1)\n    1\n    '''\n    return x\n\n"
+        "class Box:\n    def area(self):\n        return 0\n",
+    )
+
+
+def test_function_graph_links_module_passed_as_argument(tmp_path):
+    _doctested_module(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "import doctest\nimport pkg.tr\n\n"
+        "def test_doctest():\n    doctest.testmod(pkg.tr)\n\n"
+        "def test_local_import():\n    import pkg\n    doctest.testmod(m=pkg.tr)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    for member in ("pkg.tr.rot", "pkg.tr.Box", "pkg.tr.Box.area"):
+        assert {"tests.test_doc.test_doctest", "tests.test_doc.test_local_import"} <= (
+            graph.dependents.get(member, set())
+        ), member
+
+
+def test_function_graph_links_module_argument_through_helper_module(tmp_path):
+    _doctested_module(tmp_path)
+    _write(tmp_path, "tests/generic.py", "import pkg\n")
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "try:\n    from . import generic as g\nexcept BaseException:\n    import generic as g\n"
+        "import doctest\n\n"
+        "def test_doctest():\n    doctest.testmod(g.pkg.tr)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert "tests.test_doc.test_doctest" in graph.dependents.get("pkg.tr.rot", set())
+
+
+def test_function_graph_module_argument_ignores_non_modules_and_shadowing(tmp_path):
+    _doctested_module(tmp_path)
+    _write(tmp_path, "pkg/other.py", "def k():\n    return 1\n")
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "import pkg.tr\nimport pkg.other\n\n"
+        "def test_function_argument():\n    list(map(pkg.tr.rot, [1]))\n\n"
+        "def test_shadowed(pkg):\n    print(pkg.other)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    # A function passed as an argument links only to that function.
+    assert "tests.test_doc.test_function_argument" in graph.dependents["pkg.tr.rot"]
+    assert "tests.test_doc.test_function_argument" not in graph.dependents.get(
+        "pkg.tr.Box.area", set()
+    )
+    # A parameter named like the package is not the module.
+    assert "tests.test_doc.test_shadowed" not in graph.dependents.get("pkg.other.k", set())
+
+
+def test_function_graph_follows_calls_through_dotted_import(tmp_path):
+    _doctested_module(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_dotted.py",
+        "import pkg.tr\n\ndef test_call():\n    assert pkg.tr.rot(1) == 1\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert "tests.test_dotted.test_call" in graph.dependents.get("pkg.tr.rot", set())
