@@ -349,6 +349,237 @@ def _build_export_index(
     return bindings
 
 
+def _iter_module_level_statements(body):
+    """Top-level statements, descending into module-level ``if``/``try`` blocks."""
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If):
+            yield from _iter_module_level_statements(stmt.body)
+            yield from _iter_module_level_statements(stmt.orelse)
+        elif isinstance(stmt, ast.Try) or (
+            hasattr(ast, "TryStar") and isinstance(stmt, ast.TryStar)
+        ):
+            for block in (
+                stmt.body,
+                stmt.orelse,
+                stmt.finalbody,
+                *(handler.body for handler in stmt.handlers),
+            ):
+                yield from _iter_module_level_statements(block)
+
+
+def _assignments(stmt) -> list[tuple[str, ast.AST]]:
+    """``(name, value)`` pairs bound by an assignment statement."""
+    if isinstance(stmt, ast.Assign):
+        targets = stmt.targets
+    elif isinstance(stmt, (ast.AnnAssign, ast.AugAssign)) and stmt.value is not None:
+        targets = [stmt.target]
+    else:
+        return []
+    return [
+        (node.id, stmt.value)
+        for target in targets
+        for node in ast.walk(target)
+        if isinstance(node, ast.Name)
+    ]
+
+
+def _value_references(expr: ast.AST) -> tuple[set[str], set[tuple[str, ...]]]:
+    """Names and attribute chains (``root, attr, ...``) loaded by an expression."""
+    names: set[str] = set()
+    chains: set[tuple[str, ...]] = set()
+    for node in ast.walk(expr):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            attributes = []
+            target = node
+            while isinstance(target, ast.Attribute):
+                attributes.append(target.attr)
+                target = target.value
+            if isinstance(target, ast.Name):
+                chains.add((target.id, *reversed(attributes)))
+    return names, chains
+
+
+class _ValueReferenceResolver:
+    """Resolve functions referenced as values instead of being called (#75).
+
+    pyan only keeps ``uses`` edges whose target is a function/class node, so a
+    function reached through a module-level variable (``FUNCS = [f, g]``)
+    or listed in a decorator argument (``@pytest.mark.parametrize("fn",
+    FUNCS)``) does not reach the function that receives it. Module variables
+    are not graph nodes; their values are expanded transitively into the
+    functions and classes they reference.
+    """
+
+    def __init__(
+        self,
+        graph: CallGraphVisitor,
+        function_nodes: FunctionNodes,
+        resolve_qualified,
+    ) -> None:
+        self.graph = graph
+        self.function_nodes = function_nodes
+        self.resolve_qualified = resolve_qualified
+        self.stub_modules = _stub_modules_by_public_name(graph)
+        # (module, class path) -> name -> assigned values
+        self.variables: dict[tuple[str, tuple[str, ...]], dict[str, list[ast.AST]]] = {}
+        self.decorated: list[tuple[str, str, tuple[str, ...], list[ast.AST]]] = []
+        self._expanded: dict[tuple[str, tuple[str, ...], str], set[str]] = {}
+        self._qualified: dict[str, str | None] = {}
+
+    def index_module(self, module_name: str, tree: ast.Module) -> None:
+        module_variables = self.variables.setdefault((module_name, ()), {})
+        for stmt in _iter_module_level_statements(tree.body):
+            for name, value in _assignments(stmt):
+                module_variables.setdefault(name, []).append(value)
+        self._index_definitions(module_name, tree.body, ())
+
+    def _index_definitions(self, module_name: str, body, prefix: tuple[str, ...]) -> None:
+        for stmt in body:
+            if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            qualified = (*prefix, stmt.name)
+            node_id = ".".join((module_name, *qualified))
+            if stmt.decorator_list and node_id in self.function_nodes:
+                self.decorated.append((node_id, module_name, prefix, stmt.decorator_list))
+            if isinstance(stmt, ast.ClassDef):
+                class_variables = self.variables.setdefault((module_name, qualified), {})
+                for class_stmt in stmt.body:
+                    for name, value in _assignments(class_stmt):
+                        class_variables.setdefault(name, []).append(value)
+            self._index_definitions(module_name, stmt.body, qualified)
+
+    def variable_key(self, node_name: str) -> tuple[str, tuple[str, ...], str] | None:
+        module_name, _, name = node_name.rpartition(".")
+        if name in self.variables.get((module_name, ()), {}):
+            return module_name, (), name
+        return None
+
+    def references(
+        self, module_name: str, class_path: tuple[str, ...], expr: ast.AST
+    ) -> set[str]:
+        names, chains = _value_references(expr)
+        found: set[str] = set()
+        for name in names:
+            found |= self._resolve_name(module_name, class_path, name)
+        for root, *attributes in chains:
+            found |= self._resolve_chain(module_name, class_path, root, attributes)
+        return found
+
+    def expand_variable(self, key: tuple[str, tuple[str, ...], str]) -> set[str]:
+        if key in self._expanded:
+            return self._expanded[key]
+        self._expanded[key] = set()  # breaks cycles (``A = B``; ``B = A``)
+        module_name, class_path, name = key
+        found: set[str] = set()
+        for value in self.variables[(module_name, class_path)][name]:
+            found |= self.references(module_name, class_path, value)
+        self._expanded[key] = found
+        return found
+
+    def _resolve_name(self, module_name: str, class_path: tuple[str, ...], name: str) -> set[str]:
+        # Class bodies see their own names, then the module's globals.
+        scopes = [class_path, ()] if class_path else [()]
+        for scope_path in scopes:
+            candidate = ".".join((module_name, *scope_path, name))
+            if candidate in self.function_nodes:
+                return {candidate}
+            if name in self.variables.get((module_name, scope_path), {}):
+                return self.expand_variable((module_name, scope_path, name))
+
+        binding = self._module_binding(module_name, name)
+        if binding is None:
+            return set()
+        resolved = _resolve_imported_function(
+            binding, self.graph, self.function_nodes, self.stub_modules
+        )
+        if resolved is not None:
+            return {resolved}
+        # ``from .common import FUNCS``: expand the imported module variable.
+        if binding.flavor == Flavor.IMPORTEDITEM and binding.namespace:
+            source = (binding.namespace, (), binding.name)
+            if binding.name in self.variables.get((binding.namespace, ()), {}):
+                return self.expand_variable(source)
+        return set()
+
+    def _resolve_chain(
+        self,
+        module_name: str,
+        class_path: tuple[str, ...],
+        root: str,
+        attributes: list[str],
+    ) -> set[str]:
+        binding = self._module_binding(module_name, root)
+        if binding is not None and binding.flavor == Flavor.MODULE:
+            qualified = ".".join([binding.get_name(), *attributes])
+            if qualified not in self._qualified:
+                self._qualified[qualified] = self.resolve_qualified(qualified)
+            target = self._qualified[qualified]
+            return {target} if target is not None else set()
+        # ``SomeClass.method`` referenced as a value.
+        found = set()
+        for owner in self._resolve_name(module_name, class_path, root):
+            candidate = ".".join([owner, *attributes])
+            if candidate in self.function_nodes:
+                found.add(candidate)
+        return found
+
+    def _module_binding(self, module_name: str, name: str):
+        scope = self.graph.scopes.get(module_name)
+        return scope.defs.get(name) if scope is not None else None
+
+    def decorator_dependencies(self) -> dict[str, set[str]]:
+        dependencies: dict[str, set[str]] = defaultdict(set)
+        for node_id, module_name, class_path, decorators in self.decorated:
+            for decorator in decorators:
+                for target in self.references(module_name, class_path, decorator):
+                    if target != node_id:
+                        dependencies[node_id].add(target)
+        return dependencies
+
+
+def _add_value_reference_edges(
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    function_dependencies: defaultdict[str, set[str]],
+    resolve_qualified,
+    trees: dict[str, ast.Module] | None = None,
+) -> None:
+    """Link functions to the functions they use as values (#75).
+
+    Covers module-level variables read by a function (``for f in FUNCS``)
+    and the names/attributes used in its decorators, which Python evaluates
+    in the enclosing scope (``@pytest.mark.parametrize("fn", FUNCS)``).
+    """
+    resolver = _ValueReferenceResolver(graph, function_nodes, resolve_qualified)
+    for module_name, filename in graph.module_to_filename.items():
+        if filename.endswith(".pyi"):
+            continue
+        tree = _parse_file(filename, trees)
+        if tree is None:
+            continue
+        resolver.index_module(module_name, tree)
+
+    for caller, targets in resolver.decorator_dependencies().items():
+        function_dependencies[caller].update(targets)
+
+    for function_node, dependency_nodes in graph.uses_edges.items():
+        caller = function_node.get_name()
+        if caller not in function_nodes:
+            continue
+        for dependency in dependency_nodes:
+            dependency_name = dependency.get_name()
+            if dependency_name in function_nodes:
+                continue
+            key = resolver.variable_key(dependency_name)
+            if key is None:
+                continue
+            targets = resolver.expand_variable(key) - {caller}
+            function_dependencies[caller].update(targets)
+
+
 def _extract_function_nodes(
     graph: CallGraphVisitor,
     working_dir: str,
@@ -521,19 +752,33 @@ def _build_function_dependency_graph(
     stub_modules = _stub_modules_by_public_name(graph)
     export_index = _build_export_index(graph, trees)
     export_modules = {module for module, _ in export_index}
+    # Many callers share the same qualified target (and Load-context references
+    # also record every prefix of an attribute chain), so resolve each once.
+    resolved_targets: dict[str, str | None] = {}
+
+    def resolve_qualified(qualified_target: str) -> str | None:
+        if qualified_target not in resolved_targets:
+            resolved_targets[qualified_target] = _resolve_qualified_function_target(
+                qualified_target, graph, function_nodes, stub_modules, export_index,
+                export_modules,
+            )
+        return resolved_targets[qualified_target]
+
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
             continue
         # Keep pyan's direct call edge when it already resolved this target.
         if qualified_target in function_dependencies[caller]:
             continue
-        # Resolve only qualified calls that pyan did not already represent.
-        target = _resolve_qualified_function_target(
-            qualified_target, graph, function_nodes, stub_modules, export_index,
-            export_modules,
-        )
-        if target is not None:
+        # Resolve only qualified references that pyan did not already represent.
+        target = resolve_qualified(qualified_target)
+        if target is not None and target != caller:
             function_dependencies[caller].add(target)
+
+    # Functions used as values: module variables and decorator arguments.
+    _add_value_reference_edges(
+        graph, function_nodes, function_dependencies, resolve_qualified, trees
+    )
 
     # A number of Python operations dispatch to a method without naming it in
     # source (attribute access, operators, iteration, context managers, ...).

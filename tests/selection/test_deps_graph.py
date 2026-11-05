@@ -1027,6 +1027,154 @@ def test_get_dependency_graph_propagates_other_errors(git_repo, monkeypatch):
         get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
 
 
+def _lazy_package(tmp_path: Path) -> None:
+    """Package whose attributes are created lazily (``__getattr__`` + stub)."""
+    _write(tmp_path, "pkg/__init__.py", "def __getattr__(name):\n    raise AttributeError(name)\n")
+    _write(
+        tmp_path,
+        "pkg/__init__.pyi",
+        "from .dag import descendants as descendants\n"
+        "from .dag import ancestors as ancestors\n",
+    )
+    _write(
+        tmp_path,
+        "pkg/dag.py",
+        "def descendants(graph):\n    return set()\n\n"
+        "def ancestors(graph):\n    return set()\n",
+    )
+
+
+def _function_graph_for(tmp_path: Path):
+    python_files = [
+        str(path) for path in (*tmp_path.rglob("*.py"), *tmp_path.rglob("*.pyi"))
+    ]
+    return _build_function_dependency_graph(python_files, str(tmp_path))
+
+
+def test_function_graph_links_functions_referenced_without_a_call(tmp_path):
+    _lazy_package(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_refs.py",
+        "import pytest\n"
+        "import pkg as nx\n\n"
+        "def test_alias():\n"
+        "    descendants = nx.descendants\n"
+        "    descendants(None)\n\n"
+        "def test_argument():\n"
+        "    pytest.raises(ValueError, nx.descendants, None)\n\n"
+        "def test_list_element():\n"
+        "    for func in [nx.descendants]:\n"
+        "        func(None)\n\n"
+        "def test_shadowed(nx):\n"
+        "    nx.descendants(None)\n\n"
+        "def test_unrelated():\n"
+        "    nx.ancestors(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["pkg.dag.descendants"] == {
+        "tests.test_refs.test_alias",
+        "tests.test_refs.test_argument",
+        "tests.test_refs.test_list_element",
+    }
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_refs.test_unrelated"}
+
+
+def test_function_graph_links_parametrized_tests_through_module_variables(tmp_path):
+    _lazy_package(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_params.py",
+        "import pytest\n"
+        "import pkg as nx\n\n"
+        "def descendants_helper(graph):\n"
+        "    return nx.descendants(graph)\n\n"
+        "is_funcs = {'descendants': (descendants_helper,)}\n"
+        "all_funcs = is_funcs | {}\n"
+        "params = [pytest.param(fn[0], id=key) for key, fn in all_funcs.items()]\n\n"
+        "@pytest.mark.parametrize('func', params)\n"
+        "def test_through_variables(func):\n"
+        "    func(None)\n\n"
+        "@pytest.mark.parametrize('func', [nx.descendants])\n"
+        "def test_qualified_in_decorator(func):\n"
+        "    func(None)\n\n"
+        "class TestCases:\n"
+        "    CASES = [nx.descendants]\n\n"
+        "    @pytest.mark.parametrize('func', CASES)\n"
+        "    def test_class_variable(self, func):\n"
+        "        func(None)\n\n"
+        "def test_body_reads_variable():\n"
+        "    for funcs in all_funcs.values():\n"
+        "        funcs[0](None)\n\n"
+        "@pytest.mark.parametrize('func', [nx.ancestors])\n"
+        "def test_unrelated(func):\n"
+        "    func(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["tests.test_params.descendants_helper"] >= {
+        "tests.test_params.test_through_variables",
+        "tests.test_params.test_body_reads_variable",
+    }
+    assert {
+        "tests.test_params.test_qualified_in_decorator",
+        "tests.test_params.TestCases.test_class_variable",
+    } <= graph.dependents["pkg.dag.descendants"]
+    affected = graph.dependents["pkg.dag.descendants"] | graph.dependents[
+        "tests.test_params.descendants_helper"
+    ]
+    assert "tests.test_params.test_unrelated" not in affected
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_params.test_unrelated"}
+
+
+def test_function_graph_expands_module_variables_imported_from_helpers(tmp_path):
+    _lazy_package(tmp_path)
+    _write(tmp_path, "tests/__init__.py")
+    _write(
+        tmp_path,
+        "tests/common.py",
+        "import pkg as nx\n\nSHARED = [nx.descendants]\nOTHER = [nx.ancestors]\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_shared.py",
+        "import pytest\n"
+        "from .common import SHARED, OTHER\n\n"
+        "@pytest.mark.parametrize('func', SHARED)\n"
+        "def test_shared(func):\n"
+        "    func(None)\n\n"
+        "@pytest.mark.parametrize('func', OTHER)\n"
+        "def test_other(func):\n"
+        "    func(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["pkg.dag.descendants"] == {"tests.test_shared.test_shared"}
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_shared.test_other"}
+
+
+def test_function_graph_handles_cyclic_module_variables(tmp_path):
+    _write(
+        tmp_path,
+        "tests/test_cycle.py",
+        "def helper():\n    return 1\n\n"
+        "A = [helper]\n"
+        "B = A\n"
+        "A = B\n\n"
+        "def test_cycle():\n"
+        "    for func in A:\n"
+        "        func()\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["tests.test_cycle.helper"] == {"tests.test_cycle.test_cycle"}
+
+
 def test_indexed_get_node_matches_pyan_lookup(tmp_path):
     from pyan.analyzer import CallGraphVisitor as PyanVisitor
 

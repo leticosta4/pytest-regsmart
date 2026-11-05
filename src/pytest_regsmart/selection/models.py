@@ -88,11 +88,13 @@ class _QuietScopes(dict):
 
 
 class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
-    """CallGraphVisitor with a narrow fallback for qualified module calls.
+    """CallGraphVisitor with a narrow fallback for qualified module references.
 
     pyan already resolves the imported root name in the current scope. Keep
-    the remaining attribute path while the original Call AST is being visited,
-    so lazy package attributes can be matched to a known function node later.
+    the remaining attribute path while the original AST is being visited, so
+    lazy package attributes can be matched to a known function node later.
+    Both calls (``pkg.mod.f()``) and references used as values
+    (``g = pkg.mod.f``, ``pytest.raises(E, pkg.mod.f)``) are recorded.
     """
 
     def __init__(self, *args, **kwargs):
@@ -100,6 +102,13 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
         # short name -> [node list it indexes, entries indexed, namespace -> node]
         self._node_index: dict[str, list] = {}
         super().__init__(*args, **kwargs)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        # A function referenced without being called still runs later through
+        # whoever receives it (alias, argument, list element, parametrize...).
+        if isinstance(node.ctx, ast.Load):
+            self._record_module_qualified(node)
+        return super().visit_Attribute(node)
 
     def get_node(self, namespace, name, ast_node=None, flavor=Flavor.UNSPECIFIED):
         """pyan's ``get_node`` without its linear scan of same-named nodes.
@@ -141,7 +150,10 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
         self.__dict__["_regsmart_scopes"] = value
 
     def visit_Call(self, node: ast.Call):
-        target = node.func
+        self._record_module_qualified(node.func)
+        return super().visit_Call(node)
+
+    def _record_module_qualified(self, target) -> None:
         attributes: list[str] = []
         while isinstance(target, ast.Attribute):
             attributes.append(target.attr)
@@ -152,8 +164,8 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
             scope = self.scope_stack[-1]
             root_value = self.get_value(root_name)
 
-            # Do not use a module import if the call's scope binds that name to
-            # a local value (for example, a parameter named ``librosa``).
+            # Do not use a module import if the scope binds that name to a
+            # local value (for example, a parameter named ``librosa``).
             if (
                 root_name not in scope.locals
                 and root_value is not None
@@ -164,5 +176,3 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
                     [root_value.get_name(), *reversed(attributes)]
                 )
                 self.module_qualified_calls.add((caller, qualified_target))
-
-        return super().visit_Call(node)

@@ -413,6 +413,39 @@ def test_run_rts_function_level_returns_full_nodeids(
     assert result.branch == "main"
 
 
+def test_run_rts_function_level_selects_tests_parametrized_with_changed_function(
+    git_repo, commit_file, monkeypatch
+):
+    commit_file(
+        "service.py",
+        "def run():\n    return 42\n\ndef other():\n    return 1\n",
+    )
+    commit_file(
+        "test_app.py",
+        "import pytest\n"
+        "import service\n"
+        "\n"
+        "FUNCS = {'run': service.run}\n"
+        "PARAMS = [pytest.param(func, id=key) for key, func in FUNCS.items()]\n"
+        "\n"
+        "@pytest.mark.parametrize('func', PARAMS)\n"
+        "def test_parametrized(func):\n"
+        "    assert func()\n"
+        "\n"
+        "def test_other():\n"
+        "    assert service.other()\n",
+    )
+    git_repo.git.branch("-m", "main")
+    _edit_worktree(
+        git_repo, "service.py", "def run():\n    return 0\n\ndef other():\n    return 1\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
+
+    assert result.affected_tests == ["test_app.py::test_parametrized"]
+
+
 def test_run_rts_commit_source_selects_committed_change(
     git_repo, commit_file, monkeypatch
 ):

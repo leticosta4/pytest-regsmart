@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.1] - 2026-11-02
 
+### Fixed
+- Function-level selection now follows functions used as values, not only called: aliases (`f = pkg.mod.f`), call arguments (`pytest.raises(E, pkg.mod.f)`), list/dict elements, and names used in decorators such as `@pytest.mark.parametrize("fn", FUNCS)`. Module-level variables that hold such functions are expanded transitively, including variables imported from helper modules, so a test parametrized with a changed function is selected.
 ### Added
 - Compatibility with python 3.15
 ### Changed
