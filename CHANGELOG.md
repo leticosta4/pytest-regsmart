@@ -8,12 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.9.2] - 2026-11-05
 ### Fixed
 - Function-level selection now links a test to every function and class of a project module it passes as a call argument (e.g. `doctest.testmod(pkg.mod)`), also when the module is imported inside the test or reached through a helper module. A plain `pkg.mod.f` reference still links only to `f`.
 - Function-level selection now follows qualified calls and references through a dotted import without alias (`import pkg.mod` then `pkg.mod.f()`), which previously produced no edge.
 - An unexpected error while building the dependency graph or selecting tests (any exception, not only a `SyntaxError` from pyan) no longer aborts the run with `INTERNALERROR`: the full suite runs and the summary shows a warning with the exception type. A failure in test prioritization likewise keeps pytest's collection order with a warning.
 - Running with `-p no:cacheprovider` no longer crashes with `AttributeError: 'Config' object has no attribute 'cache'` (even without `--regsmart`): the test history is simply not loaded or saved, and `--regsmart` warns that prioritization uses no history.
-
 ## [0.9.1] - 2026-11-02
 
 ### Fixed
