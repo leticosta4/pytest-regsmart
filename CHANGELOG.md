@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+### Fixed
+- An unexpected error while building the dependency graph or selecting tests (any exception, not only a `SyntaxError` from pyan) no longer aborts the run with `INTERNALERROR`: the full suite runs and the summary shows a warning with the exception type. A failure in test prioritization likewise keeps pytest's collection order with a warning.
+- Running with `-p no:cacheprovider` no longer crashes with `AttributeError: 'Config' object has no attribute 'cache'` (even without `--regsmart`): the test history is simply not loaded or saved, and `--regsmart` warns that prioritization uses no history.
 
 ## [0.9.1] - 2026-11-02
 

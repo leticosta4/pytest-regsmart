@@ -45,17 +45,33 @@ class PluginRunner:  #pytest hooks
             )
             return
 
-        selection = selector.run_rts_with_fallback(
-            level=plugin.diff_level,
-            log_dict=self.log,
-            diff_source=plugin.diff_source,
-            items=items,
-        )
-        plugin.branch = selection.branch
- 
-        self._collect_selection_warnings(selection, plugin.no_rank, plugin.diff_source)
- 
-        if selection.affected_tests:
+        if getattr(self.config, "cache", None) is None and not plugin.no_rank:
+            self.warnings.append(
+                "pytest's cacheprovider is disabled (-p no:cacheprovider): test history "
+                "is not loaded or saved, so prioritization uses no history."
+            )
+
+        try:
+            selection = selector.run_rts_with_fallback(
+                level=plugin.diff_level,
+                log_dict=self.log,
+                diff_source=plugin.diff_source,
+                items=items,
+            )
+        except pytest.UsageError:
+            raise  # deliberate, user-facing configuration errors (e.g. no main/master)
+        except Exception as error:  # noqa: BLE001 - selection must never stop the run
+            selection = None
+            self.warnings.append(
+                f"Regression test selection failed ({type(error).__name__}: {error}): "
+                "the full suite will run."
+            )
+
+        if selection is not None:
+            plugin.branch = selection.branch
+            self._collect_selection_warnings(selection, plugin.no_rank, plugin.diff_source)
+
+        if selection is not None and selection.affected_tests:
             unfiltered = list(items)
             selector.filter_pytest_items_for_rtp(
                 items, set(selection.affected_tests), selection.level
@@ -69,11 +85,20 @@ class PluginRunner:  #pytest hooks
  
         if not plugin.no_rank:
             if len(items) > 1:
-                ranker.run_rtp(
-                    items, plugin.level, plugin.weights, plugin.replay_file, plugin.seed, self.log,
-                    lambda feature_name, items, reverse:
-                        extractor.load_feature(self.config, feature_name, items, reverse),
-                )
+                original_order = list(items)
+                try:
+                    ranker.run_rtp(
+                        items, plugin.level, plugin.weights, plugin.replay_file, plugin.seed,
+                        self.log,
+                        lambda feature_name, items, reverse:
+                            extractor.load_feature(self.config, feature_name, items, reverse),
+                    )
+                except Exception as error:  # noqa: BLE001 - keep pytest's order instead
+                    items[:] = original_order
+                    self.warnings.append(
+                        f"Test prioritization failed ({type(error).__name__}: {error}): "
+                        "tests run in pytest's collection order."
+                    )
             elif len(items) == 1:
                 self.warnings.append(
                     "RTP skipped: only 1 test was selected, nothing to reorder."

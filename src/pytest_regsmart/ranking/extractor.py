@@ -17,8 +17,11 @@ def load_feature(
     reverse: bool,
 ) -> list[float]:
     """Load and normalize test-wise feature data from cache."""
+    cache = getattr(config, "cache", None)
+    if cache is None:  # cacheprovider disabled: no history to rank by
+        return [0.0] * len(items)
     key = os.path.join(DATA_DIR, feature_name)
-    values = config.cache.get(key, {})
+    values = cache.get(key, {})
     values = [values.get(item.nodeid, 0) for item in items]
     values = min_max_normalization(values)
     if reverse:
@@ -33,15 +36,18 @@ def compute_test_features(
     log_dict: dict | None = None,
 ) -> None:
     """Persist last_durations and num_runs_since_fail to cache."""
+    cache = getattr(config, "cache", None)
+    if cache is None:  # cacheprovider disabled (-p no:cacheprovider): nothing to persist
+        return
     start_time = time.time()
     key = os.path.join(DATA_DIR, "last_durations")
-    last_durations = config.cache.get(key, {})
+    last_durations = cache.get(key, {})
     for report in test_reports:
         last_durations[report.nodeid] = round(report.duration, 3)
-    config.cache.set(key, last_durations)
+    cache.set(key, last_durations)
 
     key = os.path.join(DATA_DIR, "num_runs_since_fail")
-    num_runs_since_fail = config.cache.get(key, {})
+    num_runs_since_fail = cache.get(key, {})
     for report in test_reports:
         if report.outcome == "failed":
             num_runs_since_fail[report.nodeid] = 0
@@ -50,7 +56,7 @@ def compute_test_features(
                 hist_len,
                 num_runs_since_fail.get(report.nodeid, 0) + 1,
             )
-    config.cache.set(key, num_runs_since_fail)
+    cache.set(key, num_runs_since_fail)
 
     if log_dict is not None:
         log_dict["Time to collect test features (s)"] = time.time() - start_time
