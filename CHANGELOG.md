@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+### Fixed
+- Function-level selection now links a test to every function and class of a project module it passes as a call argument (e.g. `doctest.testmod(pkg.mod)`), also when the module is imported inside the test or reached through a helper module. A plain `pkg.mod.f` reference still links only to `f`.
+- Function-level selection now follows qualified calls and references through a dotted import without alias (`import pkg.mod` then `pkg.mod.f()`), which previously produced no edge.
 
 ## [0.9.1] - 2026-11-02
 
