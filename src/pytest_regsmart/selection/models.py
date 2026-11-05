@@ -97,7 +97,36 @@ class _ModuleQualifiedCallGraphVisitor(CallGraphVisitor):
 
     def __init__(self, *args, **kwargs):
         self.module_qualified_calls: set[tuple[str, str]] = set()
+        # short name -> [node list it indexes, entries indexed, namespace -> node]
+        self._node_index: dict[str, list] = {}
         super().__init__(*args, **kwargs)
+
+    def get_node(self, namespace, name, ast_node=None, flavor=Flavor.UNSPECIFIED):
+        """pyan's ``get_node`` without its linear scan of same-named nodes.
+
+        pyan returns the first node of ``graph.nodes[name]`` whose namespace
+        matches, creating one when none does. Node lists only grow by
+        ``append`` or are replaced by new lists, and a node's namespace never
+        changes, so a per-list index of first nodes by namespace is exact; a
+        replaced list is re-indexed.
+        """
+        nodes = self.nodes.get(name)
+        if nodes:
+            entry = self._node_index.get(name)
+            if entry is None or entry[0] is not nodes:
+                entry = [nodes, 0, {}]
+                self._node_index[name] = entry
+            if entry[1] < len(nodes):
+                by_namespace = entry[2]
+                for node in nodes[entry[1]:]:
+                    by_namespace.setdefault(node.namespace, node)
+                entry[1] = len(nodes)
+            node = entry[2].get(namespace)
+            if node is not None:
+                if Flavor.specificity(flavor) > Flavor.specificity(node.flavor):
+                    node.flavor = flavor
+                return node
+        return super().get_node(namespace, name, ast_node, flavor)
 
     # pyan assigns ``self.scopes = {}`` during initialization; the property
     # wraps whatever it assigns, independent of the pyan version.
