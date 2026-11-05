@@ -1174,6 +1174,51 @@ def test_function_graph_handles_cyclic_module_variables(tmp_path):
 
     assert graph.dependents["tests.test_cycle.helper"] == {"tests.test_cycle.test_cycle"}
 
+
+def test_indexed_get_node_matches_pyan_lookup(tmp_path):
+    from pyan.analyzer import CallGraphVisitor as PyanVisitor
+
+    from src.pytest_regsmart.selection.models import _ModuleQualifiedCallGraphVisitor
+
+    files = [
+        _write(tmp_path, "pkg/__init__.py", "from .core import run\n"),
+        _write(
+            tmp_path,
+            "pkg/core.py",
+            "class Base:\n    def run(self):\n        return 1\n"
+            "class Child(Base):\n    def run(self):\n        return super().run()\n"
+            "def run():\n    return Child().run()\n",
+        ),
+        _write(tmp_path, "tests/test_core.py", "from pkg.core import run\n\n\ndef test_run():\n    assert run()\n"),
+    ]
+    kwargs = {
+        "filenames": [str(f) for f in files],
+        "root": str(tmp_path),
+        "logger": logging.getLogger(__name__),
+    }
+    indexed = _ModuleQualifiedCallGraphVisitor(**kwargs)
+    reference = PyanVisitor(**kwargs)
+
+    def edges(visitor):
+        return {
+            (src.get_name(), dst.get_name())
+            for src, targets in visitor.uses_edges.items()
+            for dst in targets
+        }
+
+    # Same graph as pyan's own linear lookup.
+    assert edges(indexed) == edges(reference)
+    # Every lookup returns pyan's first match, also after a list is replaced.
+    for name, nodes in list(indexed.nodes.items()):
+        for node in nodes:
+            first = next(n for n in nodes if n.namespace == node.namespace)
+            assert indexed.get_node(node.namespace, name) is first
+        indexed.nodes[name] = list(reversed(nodes))
+        for node in nodes:
+            first = next(n for n in indexed.nodes[name] if n.namespace == node.namespace)
+            assert indexed.get_node(node.namespace, name) is first
+
+
 def test_module_trees_are_the_asts_pyan_parsed(tmp_path):
     import ast
 

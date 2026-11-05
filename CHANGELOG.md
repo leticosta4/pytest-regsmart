@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
 - Function-level graph construction no longer formats every pyan scope in a debug message once per file and pass, reuses the module ASTs pyan already parsed in the re-export, inheritance and nested-pytest analyses, skips files without `runpytest` in the nested-pytest analysis, and looks up class members per file. The dependency graph is the same; on networkx building it drops from ~67 s to ~55 s.
+- Function-level graph construction no longer scans every same-named pyan node to find a node by namespace: lookups use a per-name index that returns the same node pyan would. The dependency graph and the selection are the same; the selection step drops by about 25% on dask (100 s → 75 s) and networkx (61 s → 46 s) and by 12–14% on aeon, dvc and ipython.
 - Bump pyan3 version from 2.6.2 to 2.8.1 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
 
 ## [0.9.0] - 2026-11-01
