@@ -1353,3 +1353,53 @@ def test_function_graph_follows_calls_through_dotted_import(tmp_path):
     graph = _function_graph_for(tmp_path)
 
     assert "tests.test_dotted.test_call" in graph.dependents.get("pkg.tr.rot", set())
+
+
+def _helper_module_project(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/__init__.py", "")
+    _write(tmp_path, "pkg/core.py", "def load():\n    return 1\n\ndef other():\n    return 2\n")
+    # Same basename elsewhere in the project: the sibling of the test must win.
+    _write(tmp_path, "pkg/generic.py", "def get_mesh():\n    return 0\n")
+    _write(
+        tmp_path,
+        "tests/generic.py",
+        "import pkg.core\nfrom pkg.core import load\n\ndef get_mesh():\n    return load()\n",
+    )
+
+
+def test_function_graph_resolves_helper_module_imported_by_simple_name(tmp_path):
+    _helper_module_project(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_h.py",
+        "try:\n    from . import generic as g\nexcept BaseException:\n    import generic as g\n\n"
+        "def test_mesh():\n    assert g.get_mesh() == 1\n\n"
+        "def test_chain():\n    assert g.pkg.core.load() == 1\n\n"
+        "import pytest\n\nFUNCS = [g.get_mesh]\n\n"
+        "@pytest.mark.parametrize('f', FUNCS)\ndef test_value(f):\n    f()\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert {"tests.test_h.test_mesh", "tests.test_h.test_value"} <= graph.dependents.get(
+        "tests.generic.get_mesh", set()
+    )
+    assert "tests.test_h.test_chain" in graph.dependents.get("pkg.core.load", set())
+    assert "tests.test_h.test_mesh" not in graph.dependents.get("pkg.generic.get_mesh", set())
+    assert "tests.test_h.test_chain" not in graph.dependents.get("pkg.core.other", set())
+
+
+def test_function_graph_does_not_guess_sibling_for_project_root(tmp_path):
+    _helper_module_project(tmp_path)
+    _write(tmp_path, "tests/pkg.py", "def load():\n    return 3\n")
+    _write(
+        tmp_path,
+        "tests/test_root.py",
+        "import pkg\n\ndef test_missing():\n    pkg.load()\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    # ``pkg`` is a top-level project package, so ``pkg.load`` is not retried
+    # as ``tests.pkg.load``.
+    assert "tests.test_root.test_missing" not in graph.dependents.get("tests.pkg.load", set())
