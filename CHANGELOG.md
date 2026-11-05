@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] pytest-regsmart
 
 ### Fixed
+- Function-level selection now resolves a helper module imported by a simple name that is not a top-level project module (`try: from . import generic as g` / `except: import generic as g`) to the module next to the importing file (`tests/generic.py`), as Python does when the test directory is on `sys.path`. Calls, attribute chains (`g.pkg.mod.f()`) and references used as values through such helpers now reach the project code.
 - Function-level selection now links a test to every function and class of a project module it passes as a call argument (e.g. `doctest.testmod(pkg.mod)`), also when the module is imported inside the test or reached through a helper module. A plain `pkg.mod.f` reference still links only to `f`.
 - Function-level selection now follows qualified calls and references through a dotted import without alias (`import pkg.mod` then `pkg.mod.f()`), which previously produced no edge.
 

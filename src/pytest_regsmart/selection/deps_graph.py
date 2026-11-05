@@ -427,7 +427,7 @@ class _ValueReferenceResolver:
         self.variables: dict[tuple[str, tuple[str, ...]], dict[str, list[ast.AST]]] = {}
         self.decorated: list[tuple[str, str, tuple[str, ...], list[ast.AST]]] = []
         self._expanded: dict[tuple[str, tuple[str, ...], str], set[str]] = {}
-        self._qualified: dict[str, str | None] = {}
+        self._qualified: dict[tuple[str, str], str | None] = {}
 
     def index_module(self, module_name: str, tree: ast.Module) -> None:
         module_variables = self.variables.setdefault((module_name, ()), {})
@@ -514,9 +514,10 @@ class _ValueReferenceResolver:
         binding = self._module_binding(module_name, root)
         if binding is not None and binding.flavor == Flavor.MODULE:
             qualified = ".".join([binding.get_name(), *attributes])
-            if qualified not in self._qualified:
-                self._qualified[qualified] = self.resolve_qualified(qualified)
-            target = self._qualified[qualified]
+            key = (qualified, module_name)
+            if key not in self._qualified:
+                self._qualified[key] = self.resolve_qualified(qualified, module_name)
+            target = self._qualified[key]
             return {target} if target is not None else set()
         # ``SomeClass.method`` referenced as a value.
         found = set()
@@ -876,14 +877,33 @@ def _build_function_dependency_graph(
     # Many callers share the same qualified target (and Load-context references
     # also record every prefix of an attribute chain), so resolve each once.
     resolved_targets: dict[str, str | None] = {}
+    project_modules = _project_modules(graph)
+    top_level_modules = {module.split(".")[0] for module in project_modules}
 
-    def resolve_qualified(qualified_target: str) -> str | None:
+    def resolve_absolute(qualified_target: str) -> str | None:
         if qualified_target not in resolved_targets:
             resolved_targets[qualified_target] = _resolve_qualified_function_target(
                 qualified_target, graph, function_nodes, stub_modules, export_index,
                 export_modules,
             )
         return resolved_targets[qualified_target]
+
+    def resolve_qualified(qualified_target: str, context: str | None = None) -> str | None:
+        """Resolve ``qualified_target``; ``context`` is the referencing function or module.
+
+        When the root is not a project module, retry it next to ``context``
+        (#78): ``import generic as g`` in ``tests/test_a.py`` imports
+        ``tests/generic.py`` at run time, but pyan keeps the absolute name.
+        """
+        target = resolve_absolute(qualified_target)
+        if target is not None or context is None:
+            return target
+        if qualified_target.split(".")[0] in top_level_modules:
+            return None
+        package = _caller_package(context, project_modules)
+        if not package:
+            return None
+        return resolve_absolute(f"{package}.{qualified_target}")
 
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
@@ -892,7 +912,7 @@ def _build_function_dependency_graph(
         if qualified_target in function_dependencies[caller]:
             continue
         # Resolve only qualified references that pyan did not already represent.
-        target = resolve_qualified(qualified_target)
+        target = resolve_qualified(qualified_target, caller)
         if target is not None and target != caller:
             function_dependencies[caller].add(target)
 
