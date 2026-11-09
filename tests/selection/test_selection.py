@@ -14,6 +14,7 @@ from src.pytest_regsmart.selection.selector import (
     SELECTION_TIME_KEY,
     SELECTION_TIME_KEY_FILE_LEVEL,
     SelectionResult,
+    _add_collected_fixture_edges,
     _function_id_to_pytest_nodeid,
     _get_affected_tests_at_file_level,
     _get_affected_tests_at_function_level,
@@ -64,6 +65,39 @@ def test_function_level_selection_returns_pytest_nodeids():
     result = _get_affected_tests_at_function_level(diff_result, deps_graph)
 
     assert result == ["tests/test_app.py::test_run"]
+
+
+def test_collected_fixture_closure_links_fixture_to_test(tmp_path, monkeypatch):
+    fixture_path = tmp_path / "conftest.py"
+    fixture_path.write_text("def settings():\n    return object()\n")
+    test_path = tmp_path / "test_settings.py"
+    test_path.write_text("def test_assign(settings):\n    settings.value = 1\n")
+    monkeypatch.chdir(tmp_path)
+
+    class FixtureDef:
+        func = __import__("runpy").run_path(str(fixture_path))["settings"]
+
+    class FixtureInfo:
+        def __init__(self):
+            self.name2fixturedefs = {"settings": [FixtureDef()]}
+
+    class Item:
+        path = test_path
+        nodeid = "test_settings.py::test_assign"
+        def __init__(self):
+            self._fixtureinfo = FixtureInfo()
+
+    graph = DependencyGraph(
+        dependents={},
+        function_nodes={
+            "conftest.settings": FunctionMetadata("conftest.py", 1, 2),
+            "test_settings.test_assign": FunctionMetadata("test_settings.py", 1, 2),
+        },
+    )
+
+    _add_collected_fixture_edges([Item()], graph)
+
+    assert graph.dependents["conftest.settings"] == {"test_settings.test_assign"}
 
 
 def test_function_level_selection_keeps_tests_that_run_nested_pytest():
@@ -265,6 +299,85 @@ def test_select_items_function_level_keeps_methods_of_selected_class():
     ]
 
 
+def test_select_items_function_level_matches_only_at_nodeid_boundaries():
+    nodeids = [
+        "test_x.py::test_a",
+        "test_x.py::test_ab",
+        "test_x.py::test_a_b[1]",
+        "test_x.py::TestA::test_m",
+        "test_x.py::TestAB::test_m",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_x.py::test_a", "test_x.py::TestA"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_x.py::test_a", "test_x.py::TestA::test_m"]
+
+
+def test_select_items_function_level_handles_separators_inside_param_ids():
+    nodeids = [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+        "test_p.py::test_other[test_run]",
+    ]
+
+    selected = _select_items(
+        nodeids, ["test_p.py::test_run", "test_p.py::TestC::test_m"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == [
+        "test_p.py::test_run[a::b]",
+        "test_p.py::test_run[x[1]]",
+        "test_p.py::TestC::test_m[c::d]",
+    ]
+
+
+def test_select_items_function_level_keeps_collection_order():
+    nodeids = ["test_b.py::test_2", "test_a.py::test_1", "test_b.py::test_1"]
+
+    selected = _select_items(
+        nodeids, ["test_b.py::test_1", "test_b.py::test_2"], DIFF_LEVEL.FUNCTION
+    )
+
+    assert selected == ["test_b.py::test_2", "test_b.py::test_1"]
+
+
+def _reference_function_level_filter(nodeids: list[str], selected_nodes: set[str]):
+    """The previous O(items x selected) implementation, kept as an oracle."""
+    return [
+        nodeid
+        for nodeid in nodeids
+        if any(
+            nodeid == node or nodeid.startswith((f"{node}[", f"{node}::"))
+            for node in selected_nodes
+        )
+    ]
+
+
+def test_select_items_function_level_is_equivalent_to_previous_filter():
+    import random
+
+    rng = random.Random(0)
+    parts = ["test_a.py", "test_ab.py", "TestX", "TestXY", "test_m", "test_mn", "f"]
+    params = ["", "[1]", "[a::b]", "[x[0]]", "[]", "[test_m]"]
+
+    def nodeid():
+        depth = rng.randint(1, 3)
+        return "::".join(rng.choice(parts) for _ in range(depth + 1)) + rng.choice(params)
+
+    nodeids = [nodeid() for _ in range(400)]
+    selected_nodes = {
+        nid.split("[")[0].rsplit("::", rng.randint(0, 1))[0]
+        for nid in rng.sample(nodeids, 60)
+    } | {nodeid() for _ in range(20)}
+
+    assert _select_items(nodeids, list(selected_nodes), DIFF_LEVEL.FUNCTION) == (
+        _reference_function_level_filter(nodeids, selected_nodes)
+    )
+
+
 # ---------------------------------------------------------------------------
 # run_rts (end-to-end on a real repo)
 # ---------------------------------------------------------------------------
@@ -298,6 +411,39 @@ def test_run_rts_function_level_returns_full_nodeids(
     assert result.affected_tests == ["test_app.py::test_run"]
     assert result.has_diff is True
     assert result.branch == "main"
+
+
+def test_run_rts_function_level_selects_tests_parametrized_with_changed_function(
+    git_repo, commit_file, monkeypatch
+):
+    commit_file(
+        "service.py",
+        "def run():\n    return 42\n\ndef other():\n    return 1\n",
+    )
+    commit_file(
+        "test_app.py",
+        "import pytest\n"
+        "import service\n"
+        "\n"
+        "FUNCS = {'run': service.run}\n"
+        "PARAMS = [pytest.param(func, id=key) for key, func in FUNCS.items()]\n"
+        "\n"
+        "@pytest.mark.parametrize('func', PARAMS)\n"
+        "def test_parametrized(func):\n"
+        "    assert func()\n"
+        "\n"
+        "def test_other():\n"
+        "    assert service.other()\n",
+    )
+    git_repo.git.branch("-m", "main")
+    _edit_worktree(
+        git_repo, "service.py", "def run():\n    return 0\n\ndef other():\n    return 1\n"
+    )
+    monkeypatch.chdir(git_repo.working_tree_dir)
+
+    result = run_rts(DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
+
+    assert result.affected_tests == ["test_app.py::test_parametrized"]
 
 
 def test_run_rts_commit_source_selects_committed_change(
@@ -642,3 +788,95 @@ def test_fallback_forwards_diff_source_to_selection(monkeypatch):
     run_rts_with_fallback(level=DIFF_LEVEL.FUNCTION, diff_source=WORKTREE)
 
     assert seen == [WORKTREE]
+
+
+def _add_collected_fixture_edges_oracle(items, deps_graph):
+    """Implementation before the per-name index, kept as an oracle."""
+    import os
+
+    by_location = {}
+    for function_id, metadata in deps_graph.function_nodes.items():
+        by_location.setdefault(
+            (os.path.normpath(metadata.filepath), function_id.rsplit(".", 1)[-1]), set()
+        ).add(function_id)
+    for item in items:
+        test_path = os.path.normpath(str(item.path))
+        test_name = item.nodeid.split("::")[-1].split("[")[0]
+        test_ids = by_location.get((test_path, test_name), set())
+        if not test_ids:
+            test_ids = {
+                fid for fid, metadata in deps_graph.function_nodes.items()
+                if metadata.filepath.endswith(test_path.replace(os.sep, "/").split("/")[-1])
+                and fid.rsplit(".", 1)[-1] == test_name
+            }
+        if not test_ids:
+            continue
+        definitions = getattr(item._fixtureinfo, "name2fixturedefs", {}) or {}
+        fixture_functions = set()
+        for fixturedefs in definitions.values():
+            for fixturedef in fixturedefs or ():
+                func = fixturedef.func
+                fixture_path = os.path.relpath(func.__code__.co_filename, os.getcwd())
+                fixture_functions.update(
+                    by_location.get((os.path.normpath(fixture_path), func.__name__), ())
+                )
+        for fixture_id in fixture_functions:
+            deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
+
+
+def test_collected_fixture_edges_match_previous_implementation(tmp_path, monkeypatch):
+    import copy
+    import runpy
+
+    (tmp_path / "tests" / "unit").mkdir(parents=True)
+    conftest = tmp_path / "tests" / "conftest.py"
+    conftest.write_text(
+        "def db():\n    return 1\n\n\ndef settings():\n    return 2\n\n\ndef cache():\n    return 3\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    fixtures = runpy.run_path(str(conftest))
+
+    class FixtureDef:
+        def __init__(self, name):
+            self.func = fixtures[name]
+
+    class FixtureInfo:
+        def __init__(self, names):
+            self.name2fixturedefs = {name: [FixtureDef(name)] for name in names}
+
+    class Item:
+        def __init__(self, relpath, nodeid_tail, fixture_names):
+            # pytest gives absolute paths; graph paths are relative to the repo
+            self.path = tmp_path / relpath
+            self.nodeid = f"{relpath}::{nodeid_tail}"
+            self._fixtureinfo = FixtureInfo(fixture_names)
+
+    function_nodes = {
+        "tests.conftest.db": FunctionMetadata("tests/conftest.py", 1, 2),
+        "tests.conftest.settings": FunctionMetadata("tests/conftest.py", 5, 6),
+        "tests.conftest.cache": FunctionMetadata("tests/conftest.py", 9, 10),
+        "tests.test_api.test_get": FunctionMetadata("tests/test_api.py", 1, 2),
+        "tests.test_api.TestPost.test_create": FunctionMetadata("tests/test_api.py", 4, 6),
+        "tests.unit.test_api.test_get": FunctionMetadata("tests/unit/test_api.py", 1, 2),
+        "tests.unit.test_models.test_save": FunctionMetadata("tests/unit/test_models.py", 1, 2),
+        "tests.unit.test_models.TestModel.test_save": FunctionMetadata(
+            "tests/unit/test_models.py", 4, 6
+        ),
+    }
+    items = [
+        Item("tests/test_api.py", "test_get[a]", ["db"]),
+        Item("tests/test_api.py", "test_get[b]", ["db", "settings"]),
+        Item("tests/test_api.py", "TestPost::test_create", ["settings"]),
+        Item("tests/unit/test_api.py", "test_get", ["cache"]),
+        Item("tests/unit/test_models.py", "test_save[x-1]", ["db", "cache"]),
+        Item("tests/unit/test_models.py", "TestModel::test_save", ["settings"]),
+        Item("tests/unit/test_models.py", "test_missing", ["db"]),
+    ]
+    graph = DependencyGraph(dependents={"tests.conftest.db": {"x.y"}}, function_nodes=function_nodes)
+    expected = copy.deepcopy(graph)
+
+    _add_collected_fixture_edges(items, graph)
+    _add_collected_fixture_edges_oracle(items, expected)
+
+    assert graph.dependents == expected.dependents
+    assert graph.dependents["tests.conftest.db"] >= {"x.y", "tests.test_api.test_get"}

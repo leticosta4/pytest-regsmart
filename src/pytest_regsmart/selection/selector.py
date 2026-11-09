@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -89,6 +90,72 @@ def _get_affected_nodes(
     return seen
 
 
+def _add_collected_fixture_edges(items: list, deps_graph: DependencyGraph) -> None:
+    """Connect pytest's resolved fixture closure to its collected test item.
+
+    Pytest has already resolved overrides, autouse fixtures and parametrized
+    fixture definitions by collection time; use that exact closure instead of
+    trying to infer fixture names or types from test annotations.
+    """
+    by_location: dict[tuple[str, str], set[str]] = {}
+    by_name: dict[str, list[tuple[str, str]]] = {}
+    for function_id, metadata in deps_graph.function_nodes.items():
+        name = function_id.rsplit(".", 1)[-1]
+        by_location.setdefault((os.path.normpath(metadata.filepath), name), set()).add(function_id)
+        by_name.setdefault(name, []).append((function_id, metadata.filepath))
+
+    # Parametrized variants and tests of the same file share these lookups:
+    # resolve each (test file, test name) and each fixture function once.
+    test_ids_cache: dict[tuple[str, str], set[str]] = {}
+    fixture_ids_cache: dict[tuple[str, str], set[str]] = {}
+    cwd = os.getcwd()
+
+    for item in items:
+        test_path = os.path.normpath(str(item.path))
+        test_name = item.nodeid.split("::")[-1].split("[")[0]
+        test_key = (test_path, test_name)
+        test_ids = test_ids_cache.get(test_key)
+        if test_ids is None:
+            test_ids = by_location.get(test_key, set())
+            if not test_ids:
+                # Graph paths are relative to the repository; pytest paths may be
+                # absolute. Match by suffix while retaining the function name.
+                basename = test_path.replace(os.sep, "/").split("/")[-1]
+                test_ids = {
+                    fid for fid, filepath in by_name.get(test_name, ())
+                    if filepath.endswith(basename)
+                }
+            test_ids_cache[test_key] = test_ids
+        if not test_ids:
+            continue
+        fixtureinfo = getattr(item, "_fixtureinfo", None)
+        definitions = getattr(fixtureinfo, "name2fixturedefs", {}) or {}
+        fixture_functions = set()
+        for fixturedefs in definitions.values():
+            for fixturedef in fixturedefs or ():
+                func = getattr(fixturedef, "func", None)
+                if func is None:
+                    continue
+                code = getattr(func, "__code__", None)
+                if code is None:
+                    continue
+                fixture_key = (code.co_filename, func.__name__)
+                fixture_ids = fixture_ids_cache.get(fixture_key)
+                if fixture_ids is None:
+                    try:
+                        fixture_path = os.path.relpath(code.co_filename, cwd)
+                    except ValueError:
+                        fixture_ids = set()
+                    else:
+                        fixture_ids = by_location.get(
+                            (os.path.normpath(fixture_path), func.__name__), set()
+                        )
+                    fixture_ids_cache[fixture_key] = fixture_ids
+                fixture_functions.update(fixture_ids)
+        for fixture_id in fixture_functions:
+            deps_graph.dependents.setdefault(fixture_id, set()).update(test_ids)
+
+
 def _get_affected_tests_at_file_level(
     diff_result: DiffResult,
     deps_graph: DependencyGraph,
@@ -137,21 +204,44 @@ def _function_id_to_pytest_nodeid(function_id: str, filepath: str) -> str:
     return f"{filepath}::{qualified_name.replace('.', '::')}"
 
 
-def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
-    items[:] = (
-        [item for item in items if item.nodeid.split("::")[0] in selected_nodes]
-        if diff_level == DIFF_LEVEL.FILE
-        else [
-            item
-            for item in items
-            if any(
-                item.nodeid == selected_node
-                or item.nodeid.startswith(f"{selected_node}[")
-                or item.nodeid.startswith(f"{selected_node}::")
-                for selected_node in selected_nodes
-            )
-        ]
+_NODEID_BOUNDARY = re.compile(r"\[|::")
+
+
+def _nodeid_candidates(nodeid: str):
+    """Yield ``nodeid`` and each prefix that ends right before ``[`` or ``::``.
+
+    A selected node matches an item when it equals the item's nodeid or when
+    the nodeid starts with the selected node followed by ``[`` (parametrized
+    variant) or ``::`` (member of a selected class/module). Those are exactly
+    the prefixes yielded here, so a set lookup per candidate replaces the
+    comparison against every selected node.
+    """
+    yield nodeid
+    for boundary in _NODEID_BOUNDARY.finditer(nodeid):
+        yield nodeid[: boundary.start()]
+
+
+def _matches_function_selection(nodeid: str, selected_nodes: set[str]) -> bool:
+    return any(
+        candidate in selected_nodes for candidate in _nodeid_candidates(nodeid)
     )
+
+
+def filter_pytest_items_for_rtp(items: list, selected_nodes: set[str], diff_level) -> None:
+    # ``item.nodeid`` is read once per item; the selection is looked up in a set
+    # instead of being scanned for every item (O(items x selected) before).
+    if not isinstance(selected_nodes, (set, frozenset)):
+        selected_nodes = set(selected_nodes)
+    if diff_level == DIFF_LEVEL.FILE:
+        items[:] = [
+            item for item in items if item.nodeid.split("::")[0] in selected_nodes
+        ]
+        return
+    items[:] = [
+        item
+        for item in items
+        if _matches_function_selection(item.nodeid, selected_nodes)
+    ]
 
 
 def run_rts(
@@ -159,6 +249,7 @@ def run_rts(
     log_dict: dict | None = None,
     time_key: str = SELECTION_TIME_KEY,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
 ) -> SelectionResult:
     """Orchestrates the selection..."""
     start_time = time.time()
@@ -197,6 +288,8 @@ def run_rts(
         )
     
     deps_graph = get_dependency_graph(graph_level= level)
+    if level == DIFF_LEVEL.FUNCTION and items:
+        _add_collected_fixture_edges(items, deps_graph)
 
     selected = (
         _get_affected_tests_at_function_level(diff_result, deps_graph)
@@ -229,6 +322,7 @@ def run_rts_with_fallback(
     level: DIFF_LEVEL = DEFAULT_DIFF_LEVEL,
     log_dict: dict | None = None,
     diff_source: DIFF_SOURCE = DEFAULT_DIFF_SOURCE,
+    items: list | None = None,
 ) -> SelectionResult:
     """Run RTS and, on a suspicious empty function-level result, retry at file level.
 
@@ -236,16 +330,26 @@ def run_rts_with_fallback(
     false negative (e.g. tests calling names reexported in ``__init__.py``), so
     the file-level selection is used as a safer, less precise fallback.
     """
-    result = run_rts(level=level, log_dict=log_dict, diff_source=diff_source)
+    run_kwargs = {
+        "level": level,
+        "log_dict": log_dict,
+        "diff_source": diff_source,
+    }
+    if items is not None:
+        run_kwargs["items"] = items
+    result = run_rts(**run_kwargs)
 
     if not _should_degrade_to_file(result, level):
         return result
 
-    fallback = run_rts(
-        level=DIFF_LEVEL.FILE,
-        log_dict=log_dict,
-        time_key=SELECTION_TIME_KEY_FILE_LEVEL,
-        diff_source=diff_source,
-    )
+    fallback_kwargs = {
+        "level": DIFF_LEVEL.FILE,
+        "log_dict": log_dict,
+        "time_key": SELECTION_TIME_KEY_FILE_LEVEL,
+        "diff_source": diff_source,
+    }
+    if items is not None:
+        fallback_kwargs["items"] = items
+    fallback = run_rts(**fallback_kwargs)
     fallback.degraded_to_file = True
     return fallback

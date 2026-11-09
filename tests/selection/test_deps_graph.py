@@ -590,6 +590,84 @@ def test_function_graph_resolves_qualified_calls_during_pyan_visit(tmp_path):
     )
 
 
+def test_function_graph_follows_reexported_submodules_and_star_imports(tmp_path):
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\nfrom .bipartite import *\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .basic import *\nfrom .algorithms import clustering\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/basic.py",
+        "__all__ = ['is_bipartite']\n"
+        "def is_bipartite(graph):\n    return True\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/algorithms.py",
+        "from .basic import is_bipartite\n"
+        "def clustering(graph):\n    return is_bipartite(graph)\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_bipartite.py",
+        "import networkx as nx\n"
+        "def test_root_reexport():\n    nx.is_bipartite(None)\n"
+        "def test_submodule_reexport():\n    nx.bipartite.is_bipartite(None)\n"
+        "def test_intermediate_algorithm():\n    nx.bipartite.clustering(None)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert graph.dependents["networkx.bipartite.basic.is_bipartite"] == {
+        "tests.test_bipartite.test_root_reexport",
+        "tests.test_bipartite.test_submodule_reexport",
+        "networkx.bipartite.algorithms.clustering",
+    }
+    assert "tests.test_bipartite.test_intermediate_algorithm" in graph.dependents[
+        "networkx.bipartite.algorithms.clustering"
+    ]
+
+
+def test_function_graph_follows_reexported_function_alias(tmp_path):
+    _write(
+        tmp_path,
+        "networkx/__init__.py",
+        "from . import bipartite\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/__init__.py",
+        "from .cluster import *\n",
+    )
+    _write(
+        tmp_path,
+        "networkx/bipartite/cluster.py",
+        "__all__ = ['clustering', 'latapy_clustering']\n"
+        "def latapy_clustering(graph):\n    return 0\n"
+        "clustering = latapy_clustering\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_cluster.py",
+        "import networkx as nx\n"
+        "def test_alias_through_reexport():\n    nx.bipartite.clustering(None)\n",
+    )
+
+    python_files = [str(path) for path in tmp_path.rglob("*.py")]
+    graph = _build_function_dependency_graph(python_files, str(tmp_path))
+
+    assert "tests.test_cluster.test_alias_through_reexport" in graph.dependents[
+        "networkx.bipartite.cluster.latapy_clustering"
+    ]
+
+
 def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
     _write(
         tmp_path,
@@ -622,7 +700,9 @@ def test_function_graph_tracks_inherited_dispatch_and_local_instances(tmp_path):
     assert "tests.test_api.test_inherited_api" in graph.dependents[
         "pkg.api.Base.run"
     ]
-    assert "pkg.api.Unrelated.compute" not in graph.dependents
+    assert "tests.test_api.test_inherited_api" not in graph.dependents.get(
+        "pkg.api.Unrelated.compute", set()
+    )
 
 
 def test_function_graph_resolves_inline_instance_of_inherited_api(tmp_path):
@@ -945,3 +1025,331 @@ def test_get_dependency_graph_propagates_other_errors(git_repo, monkeypatch):
 
     with raises(ValueError, match="boom"):
         get_dependency_graph(git_repo.working_tree_dir, graph_level=DIFF_LEVEL.FILE)
+
+
+def _lazy_package(tmp_path: Path) -> None:
+    """Package whose attributes are created lazily (``__getattr__`` + stub)."""
+    _write(tmp_path, "pkg/__init__.py", "def __getattr__(name):\n    raise AttributeError(name)\n")
+    _write(
+        tmp_path,
+        "pkg/__init__.pyi",
+        "from .dag import descendants as descendants\n"
+        "from .dag import ancestors as ancestors\n",
+    )
+    _write(
+        tmp_path,
+        "pkg/dag.py",
+        "def descendants(graph):\n    return set()\n\n"
+        "def ancestors(graph):\n    return set()\n",
+    )
+
+
+def _function_graph_for(tmp_path: Path):
+    python_files = [
+        str(path) for path in (*tmp_path.rglob("*.py"), *tmp_path.rglob("*.pyi"))
+    ]
+    return _build_function_dependency_graph(python_files, str(tmp_path))
+
+
+def test_function_graph_links_functions_referenced_without_a_call(tmp_path):
+    _lazy_package(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_refs.py",
+        "import pytest\n"
+        "import pkg as nx\n\n"
+        "def test_alias():\n"
+        "    descendants = nx.descendants\n"
+        "    descendants(None)\n\n"
+        "def test_argument():\n"
+        "    pytest.raises(ValueError, nx.descendants, None)\n\n"
+        "def test_list_element():\n"
+        "    for func in [nx.descendants]:\n"
+        "        func(None)\n\n"
+        "def test_shadowed(nx):\n"
+        "    nx.descendants(None)\n\n"
+        "def test_unrelated():\n"
+        "    nx.ancestors(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["pkg.dag.descendants"] == {
+        "tests.test_refs.test_alias",
+        "tests.test_refs.test_argument",
+        "tests.test_refs.test_list_element",
+    }
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_refs.test_unrelated"}
+
+
+def test_function_graph_links_parametrized_tests_through_module_variables(tmp_path):
+    _lazy_package(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_params.py",
+        "import pytest\n"
+        "import pkg as nx\n\n"
+        "def descendants_helper(graph):\n"
+        "    return nx.descendants(graph)\n\n"
+        "is_funcs = {'descendants': (descendants_helper,)}\n"
+        "all_funcs = is_funcs | {}\n"
+        "params = [pytest.param(fn[0], id=key) for key, fn in all_funcs.items()]\n\n"
+        "@pytest.mark.parametrize('func', params)\n"
+        "def test_through_variables(func):\n"
+        "    func(None)\n\n"
+        "@pytest.mark.parametrize('func', [nx.descendants])\n"
+        "def test_qualified_in_decorator(func):\n"
+        "    func(None)\n\n"
+        "class TestCases:\n"
+        "    CASES = [nx.descendants]\n\n"
+        "    @pytest.mark.parametrize('func', CASES)\n"
+        "    def test_class_variable(self, func):\n"
+        "        func(None)\n\n"
+        "def test_body_reads_variable():\n"
+        "    for funcs in all_funcs.values():\n"
+        "        funcs[0](None)\n\n"
+        "@pytest.mark.parametrize('func', [nx.ancestors])\n"
+        "def test_unrelated(func):\n"
+        "    func(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["tests.test_params.descendants_helper"] >= {
+        "tests.test_params.test_through_variables",
+        "tests.test_params.test_body_reads_variable",
+    }
+    assert {
+        "tests.test_params.test_qualified_in_decorator",
+        "tests.test_params.TestCases.test_class_variable",
+    } <= graph.dependents["pkg.dag.descendants"]
+    affected = graph.dependents["pkg.dag.descendants"] | graph.dependents[
+        "tests.test_params.descendants_helper"
+    ]
+    assert "tests.test_params.test_unrelated" not in affected
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_params.test_unrelated"}
+
+
+def test_function_graph_expands_module_variables_imported_from_helpers(tmp_path):
+    _lazy_package(tmp_path)
+    _write(tmp_path, "tests/__init__.py")
+    _write(
+        tmp_path,
+        "tests/common.py",
+        "import pkg as nx\n\nSHARED = [nx.descendants]\nOTHER = [nx.ancestors]\n",
+    )
+    _write(
+        tmp_path,
+        "tests/test_shared.py",
+        "import pytest\n"
+        "from .common import SHARED, OTHER\n\n"
+        "@pytest.mark.parametrize('func', SHARED)\n"
+        "def test_shared(func):\n"
+        "    func(None)\n\n"
+        "@pytest.mark.parametrize('func', OTHER)\n"
+        "def test_other(func):\n"
+        "    func(None)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["pkg.dag.descendants"] == {"tests.test_shared.test_shared"}
+    assert graph.dependents["pkg.dag.ancestors"] == {"tests.test_shared.test_other"}
+
+
+def test_function_graph_handles_cyclic_module_variables(tmp_path):
+    _write(
+        tmp_path,
+        "tests/test_cycle.py",
+        "def helper():\n    return 1\n\n"
+        "A = [helper]\n"
+        "B = A\n"
+        "A = B\n\n"
+        "def test_cycle():\n"
+        "    for func in A:\n"
+        "        func()\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert graph.dependents["tests.test_cycle.helper"] == {"tests.test_cycle.test_cycle"}
+
+
+def test_indexed_get_node_matches_pyan_lookup(tmp_path):
+    from pyan.analyzer import CallGraphVisitor as PyanVisitor
+
+    from src.pytest_regsmart.selection.models import _ModuleQualifiedCallGraphVisitor
+
+    files = [
+        _write(tmp_path, "pkg/__init__.py", "from .core import run\n"),
+        _write(
+            tmp_path,
+            "pkg/core.py",
+            "class Base:\n    def run(self):\n        return 1\n"
+            "class Child(Base):\n    def run(self):\n        return super().run()\n"
+            "def run():\n    return Child().run()\n",
+        ),
+        _write(tmp_path, "tests/test_core.py", "from pkg.core import run\n\n\ndef test_run():\n    assert run()\n"),
+    ]
+    kwargs = {
+        "filenames": [str(f) for f in files],
+        "root": str(tmp_path),
+        "logger": logging.getLogger(__name__),
+    }
+    indexed = _ModuleQualifiedCallGraphVisitor(**kwargs)
+    reference = PyanVisitor(**kwargs)
+
+    def edges(visitor):
+        return {
+            (src.get_name(), dst.get_name())
+            for src, targets in visitor.uses_edges.items()
+            for dst in targets
+        }
+
+    # Same graph as pyan's own linear lookup.
+    assert edges(indexed) == edges(reference)
+    # Every lookup returns pyan's first match, also after a list is replaced.
+    for name, nodes in list(indexed.nodes.items()):
+        for node in nodes:
+            first = next(n for n in nodes if n.namespace == node.namespace)
+            assert indexed.get_node(node.namespace, name) is first
+        indexed.nodes[name] = list(reversed(nodes))
+        for node in nodes:
+            first = next(n for n in indexed.nodes[name] if n.namespace == node.namespace)
+            assert indexed.get_node(node.namespace, name) is first
+
+
+def test_module_trees_are_the_asts_pyan_parsed(tmp_path):
+    import ast
+
+    from src.pytest_regsmart.selection.deps_graph import _module_trees
+    from src.pytest_regsmart.selection.models import (
+        _ModuleQualifiedCallGraphVisitor,
+        _QuietScopes,
+    )
+
+    files = [
+        _write(tmp_path, "pkg/__init__.py", "from .core import run\n"),
+        _write(
+            tmp_path,
+            "pkg/core.py",
+            "import os\n\n\nclass Base:\n    def run(self):\n        return [lambda x: x for _ in range(2)]\n\n\n"
+            "def run(value: int = 1):\n    return Base().run(), os.sep, {k: v for k, v in {}.items()}\n",
+        ),
+        _write(tmp_path, "tests/test_core.py", "from pkg.core import run\n\n\ndef test_run():\n    assert run()\n"),
+    ]
+    graph = _ModuleQualifiedCallGraphVisitor(
+        filenames=[str(f) for f in files], root=str(tmp_path), logger=logging.getLogger(__name__)
+    )
+
+    trees = _module_trees(graph)
+
+    # pyan keeps an unmodified ast.Module per analyzed file, so the plugin's
+    # own AST passes can reuse it instead of parsing the file again.
+    assert set(trees) == {os.path.normpath(os.path.abspath(f)) for f in files}
+    for path in files:
+        fresh = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        assert ast.dump(trees[os.path.normpath(os.path.abspath(path))]) == ast.dump(fresh)
+
+    # The scopes mapping keeps dict behaviour, with a constant-size repr.
+    assert isinstance(graph.scopes, _QuietScopes)
+    assert "pkg.core" in graph.scopes
+    assert repr(graph.scopes) == f"<{len(graph.scopes)} scopes>"
+
+
+@mark.parametrize(
+    "source",
+    ["a", "a.b", "pkg.mod.Klass", "f()", "f().x", "a[0]", "a.b[0].c", "'Klass'", "x.y()", "(a or b).c", "obj.attr.method"],
+)
+def test_dotted_name_matches_unparse_for_name_chains(source):
+    import ast
+
+    from src.pytest_regsmart.selection.dynamic_dispatch import _dotted_name
+
+    expression = ast.parse(source, mode="eval").body
+    node = expression
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    if isinstance(node, ast.Name):
+        assert _dotted_name(expression) == ast.unparse(expression)
+    else:
+        assert _dotted_name(expression) is None
+
+
+def _doctested_module(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/__init__.py", "from pkg import tr\n")
+    _write(
+        tmp_path,
+        "pkg/tr.py",
+        "def rot(x):\n    '''\n    >>> rot(1)\n    1\n    '''\n    return x\n\n"
+        "class Box:\n    def area(self):\n        return 0\n",
+    )
+
+
+def test_function_graph_links_module_passed_as_argument(tmp_path):
+    _doctested_module(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "import doctest\nimport pkg.tr\n\n"
+        "def test_doctest():\n    doctest.testmod(pkg.tr)\n\n"
+        "def test_local_import():\n    import pkg\n    doctest.testmod(m=pkg.tr)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    for member in ("pkg.tr.rot", "pkg.tr.Box", "pkg.tr.Box.area"):
+        assert {"tests.test_doc.test_doctest", "tests.test_doc.test_local_import"} <= (
+            graph.dependents.get(member, set())
+        ), member
+
+
+def test_function_graph_links_module_argument_through_helper_module(tmp_path):
+    _doctested_module(tmp_path)
+    _write(tmp_path, "tests/generic.py", "import pkg\n")
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "try:\n    from . import generic as g\nexcept BaseException:\n    import generic as g\n"
+        "import doctest\n\n"
+        "def test_doctest():\n    doctest.testmod(g.pkg.tr)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert "tests.test_doc.test_doctest" in graph.dependents.get("pkg.tr.rot", set())
+
+
+def test_function_graph_module_argument_ignores_non_modules_and_shadowing(tmp_path):
+    _doctested_module(tmp_path)
+    _write(tmp_path, "pkg/other.py", "def k():\n    return 1\n")
+    _write(
+        tmp_path,
+        "tests/test_doc.py",
+        "import pkg.tr\nimport pkg.other\n\n"
+        "def test_function_argument():\n    list(map(pkg.tr.rot, [1]))\n\n"
+        "def test_shadowed(pkg):\n    print(pkg.other)\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    # A function passed as an argument links only to that function.
+    assert "tests.test_doc.test_function_argument" in graph.dependents["pkg.tr.rot"]
+    assert "tests.test_doc.test_function_argument" not in graph.dependents.get(
+        "pkg.tr.Box.area", set()
+    )
+    # A parameter named like the package is not the module.
+    assert "tests.test_doc.test_shadowed" not in graph.dependents.get("pkg.other.k", set())
+
+
+def test_function_graph_follows_calls_through_dotted_import(tmp_path):
+    _doctested_module(tmp_path)
+    _write(
+        tmp_path,
+        "tests/test_dotted.py",
+        "import pkg.tr\n\ndef test_call():\n    assert pkg.tr.rot(1) == 1\n",
+    )
+
+    graph = _function_graph_for(tmp_path)
+
+    assert "tests.test_dotted.test_call" in graph.dependents.get("pkg.tr.rot", set())

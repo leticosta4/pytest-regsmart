@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import importlib.util
 import logging
 import os
 from collections import defaultdict
@@ -96,30 +98,607 @@ def _resolve_qualified_function_target(
     graph: CallGraphVisitor,
     function_nodes: FunctionNodes,
     stub_modules: dict[str, str],
+    exports: dict[tuple[str, str], str] | None = None,
+    export_modules: set[str] | None = None,
 ) -> str | None:
     """Resolve a qualified public name to a function node without name-only matching."""
     if target_name in function_nodes:
         return target_name
 
+    if exports:
+        if export_modules is None:
+            export_modules = {module for module, _ in exports}
+        # Walk module and symbol bindings one attribute at a time. A binding
+        # can point to a re-exported function or to another module.
+        parts = target_name.split(".")
+        for module_end in range(len(parts) - 1, 0, -1):
+            module_name = ".".join(parts[:module_end])
+            if module_name not in export_modules:
+                continue
+            current = module_name
+            for part in parts[module_end:]:
+                current = _follow_export(
+                    exports, exports.get((current, part), f"{current}.{part}")
+                )
+            if current in function_nodes:
+                return current
+
     parts = target_name.split(".")
+    # Start at the longest known module prefix, then follow each binding in
+    # that module's scope.  The previous implementation only accepted a
+    # single symbol after the module, which lost calls such as
+    # ``pkg.submodule.function`` when ``submodule`` was re-exported.
     for module_end in range(len(parts) - 1, 0, -1):
         module_name = ".".join(parts[:module_end])
         symbol_path = parts[module_end:]
-        if len(symbol_path) != 1:
-            continue
-
         scope_names = [stub_modules.get(module_name), module_name]
         for scope_name in scope_names:
             scope = graph.scopes.get(scope_name) if scope_name else None
-            binding = scope.defs.get(symbol_path[0]) if scope is not None else None
+            if scope is None:
+                continue
+            binding = scope.defs.get(symbol_path[0])
             if binding is None:
                 continue
             resolved = _resolve_imported_function(
                 binding, graph, function_nodes, stub_modules
             )
-            if resolved is not None:
+            if resolved is not None and len(symbol_path) == 1:
                 return resolved
+
+            # A package may bind an attribute to an imported submodule (or a
+            # module alias). Continue from that module's scope so chains of
+            # package re-exports are resolved without scanning source files.
+            next_module = None
+            if binding.flavor == Flavor.MODULE:
+                next_module = _normalize_pyan_module_name(binding.get_name())
+            elif binding.flavor == Flavor.IMPORTEDITEM:
+                next_module = _normalize_pyan_module_name(
+                    f"{binding.namespace}.{binding.name}"
+                    if binding.namespace
+                    else binding.name
+                )
+            if next_module is not None:
+                nested = ".".join([next_module, *symbol_path[1:]])
+                if nested != target_name:
+                    resolved = _resolve_qualified_function_target(
+                        nested, graph, function_nodes, stub_modules, exports,
+                        export_modules,
+                    )
+                    if resolved is not None:
+                        return resolved
     return None
+
+
+def _follow_export(exports: dict[tuple[str, str], str], name: str) -> str:
+    """Follow chained bindings (re-export of an alias of a function)."""
+    seen = set()
+    while name not in seen:
+        seen.add(name)
+        module, _, attr = name.rpartition(".")
+        nxt = exports.get((module, attr)) if module else None
+        if nxt is None or nxt == name:
+            break
+        name = nxt
+    return name
+
+
+def _path_key(path: str) -> str:
+    return os.path.normpath(os.path.abspath(path))
+
+
+def _module_trees(graph: CallGraphVisitor) -> dict[str, ast.Module]:
+    """Module ASTs pyan already parsed, keyed by normalized absolute path.
+
+    pyan associates each analyzed file's ``ast.Module`` with its module node
+    and does not modify it, so the plugin's own AST passes can reuse it
+    instead of reading and parsing every file again.
+    """
+    trees: dict[str, ast.Module] = {}
+    for node_group in graph.nodes.values():
+        for node in node_group:
+            if (
+                node.flavor == Flavor.MODULE
+                and isinstance(node.ast_node, ast.Module)
+                and node.filename
+            ):
+                trees[_path_key(node.filename)] = node.ast_node
+    return trees
+
+
+def _parse_file(path: str, trees: dict[str, ast.Module] | None) -> ast.Module | None:
+    """Return the cached AST for ``path``, or parse it; ``None`` if unreadable."""
+    tree = trees.get(_path_key(path)) if trees else None
+    if tree is not None:
+        return tree
+    try:
+        with open(path, encoding="utf-8") as source:
+            return ast.parse(source.read(), filename=path)
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+
+
+def _build_export_index(
+    graph: CallGraphVisitor,
+    trees: dict[str, ast.Module] | None = None,
+) -> dict[tuple[str, str], str]:
+    """Index module exports and import aliases once for qualified-call lookup."""
+    modules = {
+        _normalize_pyan_module_name(name): path
+        for name, path in graph.module_to_filename.items()
+        if not path.endswith(".pyi")
+    }
+    bindings: dict[tuple[str, str], str] = {}
+    stars: list[tuple[str, str]] = []
+    explicit_exports: dict[str, set[str]] = {}
+
+    def dotted_name(node: ast.AST) -> str | None:
+        parts = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            return ".".join([node.id, *reversed(parts)])
+        return None
+
+    for module, path in modules.items():
+        tree = _parse_file(path, trees)
+        if tree is None:
+            continue
+        is_package = os.path.basename(path) == "__init__.py"
+        package = module if is_package else module.rpartition(".")[0]
+        # Only top-level statements are indexed. Bindings created inside
+        # ``try``/``if`` blocks are left to pyan's own resolution.
+        for statement in tree.body:
+            if isinstance(
+                statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                bindings[(module, statement.name)] = f"{module}.{statement.name}"
+            elif isinstance(statement, ast.Import):
+                for alias in statement.names:
+                    bound = alias.asname or alias.name.split(".")[0]
+                    target = alias.name if alias.asname else alias.name.split(".")[0]
+                    bindings[(module, bound)] = target
+            elif isinstance(statement, ast.ImportFrom):
+                try:
+                    imported_module = (
+                        importlib.util.resolve_name(
+                            "." * statement.level + (statement.module or ""), package
+                        )
+                        if statement.level
+                        else (statement.module or "")
+                    )
+                except (ImportError, ValueError):
+                    continue
+                for alias in statement.names:
+                    if alias.name == "*":
+                        stars.append((module, imported_module))
+                        continue
+                    # Either a submodule or a symbol of ``imported_module``.
+                    target = (
+                        f"{imported_module}.{alias.name}"
+                        if imported_module
+                        else alias.name
+                    )
+                    bindings[(module, alias.asname or alias.name)] = target
+            elif isinstance(statement, ast.Assign):
+                value = dotted_name(statement.value)
+                if value is None:
+                    continue
+                first, dot, remainder = value.partition(".")
+                # A bare or dotted name is looked up in this module's scope
+                # first (``clustering = latapy_clustering``).
+                target = bindings.get((module, first), f"{module}.{first}")
+                if dot:
+                    target = f"{target}.{remainder}"
+                for item in statement.targets:
+                    if isinstance(item, ast.Name):
+                        bindings[(module, item.id)] = target
+            elif isinstance(statement, ast.AnnAssign) and isinstance(
+                statement.target, ast.Name
+            ):
+                value = (
+                    dotted_name(statement.value)
+                    if statement.value is not None
+                    else None
+                )
+                if value:
+                    first, dot, remainder = value.partition(".")
+                    target = bindings.get((module, first), f"{module}.{first}")
+                    if dot:
+                        target = f"{target}.{remainder}"
+                    bindings[(module, statement.target.id)] = target
+        for statement in tree.body:
+            if isinstance(statement, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in statement.targets
+            ):
+                try:
+                    value = ast.literal_eval(statement.value)
+                    if isinstance(value, (list, tuple, set)) and all(
+                        isinstance(x, str) for x in value
+                    ):
+                        explicit_exports[module] = set(value)
+                except (ValueError, TypeError):
+                    pass
+
+    # Include package submodules and expand star imports to a fixed point so
+    # chains of ``from . import *`` work regardless of file visitation order.
+    for module in modules:
+        parent, _, child = module.rpartition(".")
+        if parent:
+            bindings.setdefault((parent, child), module)
+    # Two star imports may export the same name with different targets (e.g.
+    # ``networkx.community``); the last one wins, as in Python, so convergence
+    # is checked on the whole mapping after each pass, not per assignment.
+    for _ in range(len(modules) + 1):
+        before = dict(bindings)
+        public: dict[str, set[str]] = defaultdict(set)
+        for mod, name in bindings:
+            if not name.startswith("_"):
+                public[mod].add(name)
+        for destination, source in stars:
+            names = explicit_exports.get(source)
+            if names is None:
+                names = public.get(source, set())
+            for name in names:
+                bindings[(destination, name)] = bindings.get(
+                    (source, name), f"{source}.{name}"
+                )
+        if bindings == before:
+            break
+    return bindings
+
+
+def _iter_module_level_statements(body):
+    """Top-level statements, descending into module-level ``if``/``try`` blocks."""
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If):
+            yield from _iter_module_level_statements(stmt.body)
+            yield from _iter_module_level_statements(stmt.orelse)
+        elif isinstance(stmt, ast.Try) or (
+            hasattr(ast, "TryStar") and isinstance(stmt, ast.TryStar)
+        ):
+            for block in (
+                stmt.body,
+                stmt.orelse,
+                stmt.finalbody,
+                *(handler.body for handler in stmt.handlers),
+            ):
+                yield from _iter_module_level_statements(block)
+
+
+def _assignments(stmt) -> list[tuple[str, ast.AST]]:
+    """``(name, value)`` pairs bound by an assignment statement."""
+    if isinstance(stmt, ast.Assign):
+        targets = stmt.targets
+    elif isinstance(stmt, (ast.AnnAssign, ast.AugAssign)) and stmt.value is not None:
+        targets = [stmt.target]
+    else:
+        return []
+    return [
+        (node.id, stmt.value)
+        for target in targets
+        for node in ast.walk(target)
+        if isinstance(node, ast.Name)
+    ]
+
+
+def _value_references(expr: ast.AST) -> tuple[set[str], set[tuple[str, ...]]]:
+    """Names and attribute chains (``root, attr, ...``) loaded by an expression."""
+    names: set[str] = set()
+    chains: set[tuple[str, ...]] = set()
+    for node in ast.walk(expr):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            attributes = []
+            target = node
+            while isinstance(target, ast.Attribute):
+                attributes.append(target.attr)
+                target = target.value
+            if isinstance(target, ast.Name):
+                chains.add((target.id, *reversed(attributes)))
+    return names, chains
+
+
+class _ValueReferenceResolver:
+    """Resolve functions referenced as values instead of being called (#75).
+
+    pyan only keeps ``uses`` edges whose target is a function/class node, so a
+    function reached through a module-level variable (``FUNCS = [f, g]``)
+    or listed in a decorator argument (``@pytest.mark.parametrize("fn",
+    FUNCS)``) does not reach the function that receives it. Module variables
+    are not graph nodes; their values are expanded transitively into the
+    functions and classes they reference.
+    """
+
+    def __init__(
+        self,
+        graph: CallGraphVisitor,
+        function_nodes: FunctionNodes,
+        resolve_qualified,
+    ) -> None:
+        self.graph = graph
+        self.function_nodes = function_nodes
+        self.resolve_qualified = resolve_qualified
+        self.stub_modules = _stub_modules_by_public_name(graph)
+        # (module, class path) -> name -> assigned values
+        self.variables: dict[tuple[str, tuple[str, ...]], dict[str, list[ast.AST]]] = {}
+        self.decorated: list[tuple[str, str, tuple[str, ...], list[ast.AST]]] = []
+        self._expanded: dict[tuple[str, tuple[str, ...], str], set[str]] = {}
+        self._qualified: dict[str, str | None] = {}
+
+    def index_module(self, module_name: str, tree: ast.Module) -> None:
+        module_variables = self.variables.setdefault((module_name, ()), {})
+        for stmt in _iter_module_level_statements(tree.body):
+            for name, value in _assignments(stmt):
+                module_variables.setdefault(name, []).append(value)
+        self._index_definitions(module_name, tree.body, ())
+
+    def _index_definitions(self, module_name: str, body, prefix: tuple[str, ...]) -> None:
+        for stmt in body:
+            if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            qualified = (*prefix, stmt.name)
+            node_id = ".".join((module_name, *qualified))
+            if stmt.decorator_list and node_id in self.function_nodes:
+                self.decorated.append((node_id, module_name, prefix, stmt.decorator_list))
+            if isinstance(stmt, ast.ClassDef):
+                class_variables = self.variables.setdefault((module_name, qualified), {})
+                for class_stmt in stmt.body:
+                    for name, value in _assignments(class_stmt):
+                        class_variables.setdefault(name, []).append(value)
+            self._index_definitions(module_name, stmt.body, qualified)
+
+    def variable_key(self, node_name: str) -> tuple[str, tuple[str, ...], str] | None:
+        module_name, _, name = node_name.rpartition(".")
+        if name in self.variables.get((module_name, ()), {}):
+            return module_name, (), name
+        return None
+
+    def references(
+        self, module_name: str, class_path: tuple[str, ...], expr: ast.AST
+    ) -> set[str]:
+        names, chains = _value_references(expr)
+        found: set[str] = set()
+        for name in names:
+            found |= self._resolve_name(module_name, class_path, name)
+        for root, *attributes in chains:
+            found |= self._resolve_chain(module_name, class_path, root, attributes)
+        return found
+
+    def expand_variable(self, key: tuple[str, tuple[str, ...], str]) -> set[str]:
+        if key in self._expanded:
+            return self._expanded[key]
+        self._expanded[key] = set()  # breaks cycles (``A = B``; ``B = A``)
+        module_name, class_path, name = key
+        found: set[str] = set()
+        for value in self.variables[(module_name, class_path)][name]:
+            found |= self.references(module_name, class_path, value)
+        self._expanded[key] = found
+        return found
+
+    def _resolve_name(self, module_name: str, class_path: tuple[str, ...], name: str) -> set[str]:
+        # Class bodies see their own names, then the module's globals.
+        scopes = [class_path, ()] if class_path else [()]
+        for scope_path in scopes:
+            candidate = ".".join((module_name, *scope_path, name))
+            if candidate in self.function_nodes:
+                return {candidate}
+            if name in self.variables.get((module_name, scope_path), {}):
+                return self.expand_variable((module_name, scope_path, name))
+
+        binding = self._module_binding(module_name, name)
+        if binding is None:
+            return set()
+        resolved = _resolve_imported_function(
+            binding, self.graph, self.function_nodes, self.stub_modules
+        )
+        if resolved is not None:
+            return {resolved}
+        # ``from .common import FUNCS``: expand the imported module variable.
+        if binding.flavor == Flavor.IMPORTEDITEM and binding.namespace:
+            source = (binding.namespace, (), binding.name)
+            if binding.name in self.variables.get((binding.namespace, ()), {}):
+                return self.expand_variable(source)
+        return set()
+
+    def _resolve_chain(
+        self,
+        module_name: str,
+        class_path: tuple[str, ...],
+        root: str,
+        attributes: list[str],
+    ) -> set[str]:
+        binding = self._module_binding(module_name, root)
+        if binding is not None and binding.flavor == Flavor.MODULE:
+            qualified = ".".join([binding.get_name(), *attributes])
+            if qualified not in self._qualified:
+                self._qualified[qualified] = self.resolve_qualified(qualified)
+            target = self._qualified[qualified]
+            return {target} if target is not None else set()
+        # ``SomeClass.method`` referenced as a value.
+        found = set()
+        for owner in self._resolve_name(module_name, class_path, root):
+            candidate = ".".join([owner, *attributes])
+            if candidate in self.function_nodes:
+                found.add(candidate)
+        return found
+
+    def _module_binding(self, module_name: str, name: str):
+        scope = self.graph.scopes.get(module_name)
+        return scope.defs.get(name) if scope is not None else None
+
+    def decorator_dependencies(self) -> dict[str, set[str]]:
+        dependencies: dict[str, set[str]] = defaultdict(set)
+        for node_id, module_name, class_path, decorators in self.decorated:
+            for decorator in decorators:
+                for target in self.references(module_name, class_path, decorator):
+                    if target != node_id:
+                        dependencies[node_id].add(target)
+        return dependencies
+
+
+def _add_value_reference_edges(
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    function_dependencies: defaultdict[str, set[str]],
+    resolve_qualified,
+    trees: dict[str, ast.Module] | None = None,
+) -> None:
+    """Link functions to the functions they use as values (#75).
+
+    Covers module-level variables read by a function (``for f in FUNCS``)
+    and the names/attributes used in its decorators, which Python evaluates
+    in the enclosing scope (``@pytest.mark.parametrize("fn", FUNCS)``).
+    """
+    resolver = _ValueReferenceResolver(graph, function_nodes, resolve_qualified)
+    for module_name, filename in graph.module_to_filename.items():
+        if filename.endswith(".pyi"):
+            continue
+        tree = _parse_file(filename, trees)
+        if tree is None:
+            continue
+        resolver.index_module(module_name, tree)
+
+    for caller, targets in resolver.decorator_dependencies().items():
+        function_dependencies[caller].update(targets)
+
+    for function_node, dependency_nodes in graph.uses_edges.items():
+        caller = function_node.get_name()
+        if caller not in function_nodes:
+            continue
+        for dependency in dependency_nodes:
+            dependency_name = dependency.get_name()
+            if dependency_name in function_nodes:
+                continue
+            key = resolver.variable_key(dependency_name)
+            if key is None:
+                continue
+            targets = resolver.expand_variable(key) - {caller}
+            function_dependencies[caller].update(targets)
+
+
+_MAX_MODULE_CHAIN_DEPTH = 8
+
+
+def _module_scope(graph: CallGraphVisitor, stub_modules: dict[str, str], module_name: str):
+    for scope_name in (stub_modules.get(module_name), module_name, f"{module_name}.__init__"):
+        if scope_name and scope_name in graph.scopes:
+            return graph.scopes[scope_name]
+    return None
+
+
+def _project_modules(graph: CallGraphVisitor) -> dict[str, str]:
+    """Map analyzed (non-stub) module names to their file paths."""
+    return {
+        _normalize_pyan_module_name(module_name): filename
+        for module_name, filename in graph.module_to_filename.items()
+        if not filename.endswith(".pyi")
+    }
+
+
+def _caller_package(caller: str, project_modules: dict[str, str]) -> str | None:
+    """Package that contains the module defining ``caller`` (longest prefix match)."""
+    parts = caller.split(".")
+    for end in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:end])
+        filename = project_modules.get(module_name)
+        if filename is None:
+            continue
+        if os.path.basename(filename) == "__init__.py":
+            return module_name
+        return module_name.rpartition(".")[0] or None
+    return None
+
+
+def _resolve_module_reference(
+    reference: str,
+    caller: str,
+    graph: CallGraphVisitor,
+    stub_modules: dict[str, str],
+    project_modules: dict[str, str],
+) -> str | None:
+    """Resolve a dotted reference to an analyzed project module, or None.
+
+    Module bindings are followed attribute by attribute (``g.trimesh.util`` when
+    the helper module ``g`` does ``import trimesh``). A root that is not a
+    project module is tried next to the caller, as Python does when the test
+    directory is on ``sys.path`` (``import generic as g`` -> ``tests.generic``).
+    Anything that ends in a function, class or value is not a module reference.
+    """
+    parts = reference.split(".")
+
+    def follow(module_name: str, attributes: list[str]) -> str | None:
+        for depth, attribute in enumerate(attributes):
+            if depth > _MAX_MODULE_CHAIN_DEPTH:
+                return None
+            scope = _module_scope(graph, stub_modules, module_name)
+            binding = scope.defs.get(attribute) if scope is not None else None
+            if binding is not None and binding.flavor == Flavor.MODULE:
+                module_name = _normalize_pyan_module_name(binding.get_name())
+            elif (
+                binding is not None
+                and binding.flavor == Flavor.IMPORTEDITEM
+                and binding.namespace is not None
+            ):
+                module_name = f"{_normalize_pyan_module_name(binding.namespace)}.{binding.name}"
+            elif f"{module_name}.{attribute}" in project_modules:
+                module_name = f"{module_name}.{attribute}"  # submodule attribute
+            else:
+                return None
+        return module_name if module_name in project_modules else None
+
+    for end in range(len(parts), 0, -1):
+        module_name = ".".join(parts[:end])
+        if module_name in project_modules:
+            return follow(module_name, parts[end:])
+    package = _caller_package(caller, project_modules)
+    if package:
+        for end in range(len(parts), 0, -1):
+            module_name = f"{package}.{'.'.join(parts[:end])}"
+            if module_name in project_modules:
+                return follow(module_name, parts[end:])
+    return None
+
+
+def _add_module_argument_edges(
+    graph: CallGraphVisitor,
+    function_nodes: FunctionNodes,
+    functions_by_files: FunctionsByFile,
+    function_dependencies: defaultdict[str, set[str]],
+    working_dir: str,
+) -> None:
+    """A project module passed as a call argument is exercised as a whole (#79).
+
+    ``doctest.testmod(pkg.mod)`` or ``inspect.getmembers(pkg.mod)`` run code of
+    ``pkg.mod`` without naming any of its functions, so the caller depends on
+    every function and class defined in that module. A plain ``pkg.mod.f``
+    reference still links only to ``f``.
+    """
+    module_arguments = getattr(graph, "module_arguments", ())
+    if not module_arguments:
+        return
+    stub_modules = _stub_modules_by_public_name(graph)
+    project_modules = _project_modules(graph)
+    resolved: dict[tuple[str, str], str | None] = {}
+    for caller, reference in module_arguments:
+        if caller not in function_nodes:
+            continue
+        package = _caller_package(caller, project_modules)
+        key = (package or "", reference)
+        if key not in resolved:
+            resolved[key] = _resolve_module_reference(
+                reference, caller, graph, stub_modules, project_modules
+            )
+        module_name = resolved[key]
+        if module_name is None:
+            continue
+        module_file = os.path.relpath(project_modules[module_name], working_dir)
+        function_dependencies[caller].update(
+            node for node in functions_by_files.get(module_file, ()) if node != caller
+        )
 
 
 def _extract_function_nodes(
@@ -271,11 +850,12 @@ def _build_function_dependency_graph(
     )
 
     function_nodes, functions_by_files = _extract_function_nodes(graph, working_dir)
+    trees = _module_trees(graph)
 
     # The child process has a separate call graph; keep the discovery logic out
     # of this module so graph construction remains focused on dependency edges.
     subprocess_tests = find_nested_pytest_tests(
-        python_files, graph.module_to_filename, function_nodes
+        python_files, graph.module_to_filename, function_nodes, trees
     )
 
     function_dependencies: defaultdict[str, set[str]] = defaultdict(set)
@@ -291,18 +871,59 @@ def _build_function_dependency_graph(
                 function_dependencies[function_name].add(dependency_name)
 
     stub_modules = _stub_modules_by_public_name(graph)
+    export_index = _build_export_index(graph, trees)
+    export_modules = {module for module, _ in export_index}
+    # Many callers share the same qualified target (and Load-context references
+    # also record every prefix of an attribute chain), so resolve each once.
+    resolved_targets: dict[str, str | None] = {}
+
+    def resolve_qualified(qualified_target: str) -> str | None:
+        if qualified_target not in resolved_targets:
+            resolved_targets[qualified_target] = _resolve_qualified_function_target(
+                qualified_target, graph, function_nodes, stub_modules, export_index,
+                export_modules,
+            )
+        return resolved_targets[qualified_target]
+
     for caller, qualified_target in graph.module_qualified_calls:
         if caller not in function_nodes:
             continue
         # Keep pyan's direct call edge when it already resolved this target.
         if qualified_target in function_dependencies[caller]:
             continue
-        # Resolve only qualified calls that pyan did not already represent.
-        target = _resolve_qualified_function_target(
-            qualified_target, graph, function_nodes, stub_modules
-        )
-        if target is not None:
+        # Resolve only qualified references that pyan did not already represent.
+        target = resolve_qualified(qualified_target)
+        if target is not None and target != caller:
             function_dependencies[caller].add(target)
+
+    _add_module_argument_edges(
+        graph, function_nodes, functions_by_files, function_dependencies, working_dir
+    )
+
+    # Functions used as values: module variables and decorator arguments.
+    _add_value_reference_edges(
+        graph, function_nodes, function_dependencies, resolve_qualified, trees
+    )
+
+    # A number of Python operations dispatch to a method without naming it in
+    # source (attribute access, operators, iteration, context managers, ...).
+    # Represent the owning class as depending on each declared member. This
+    # keeps propagation member-specific: a changed member reaches users of
+    # instances of that class, without treating every class member as changed.
+    class_ids = {
+        node.get_name()
+        for node_group in graph.nodes.values()
+        for node in node_group
+        if node.flavor == Flavor.CLASS and node.get_name() in function_nodes
+    }
+    for class_id in class_ids:
+        class_path = function_nodes[class_id].filepath
+        member_prefix = f"{class_id}."
+        # Members live in the same file as their class, so only that file's
+        # functions need to be checked (not every function of the project).
+        for member_id in functions_by_files.get(class_path, ()):
+            if member_id.startswith(member_prefix):
+                function_dependencies[class_id].add(member_id)
 
     # pyan resolves the statically visible method on ``self``/``cls``. Add
     # conservative dynamic-dispatch edges for overrides in known subclasses,
@@ -333,7 +954,7 @@ def _build_function_dependency_graph(
 
     try:
         dynamic_dependencies = get_dynamic_method_dependencies(
-            python_files, graph, function_nodes, resolve_imported_class
+            python_files, graph, function_nodes, resolve_imported_class, trees
         )
     except Exception as exc:  # noqa: BLE001
         _logger.warning(

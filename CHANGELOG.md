@@ -8,12 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] pytest-regsmart
 
+## [0.9.2] - 2026-11-05
+### Fixed
+- Function-level selection now links a test to every function and class of a project module it passes as a call argument (e.g. `doctest.testmod(pkg.mod)`), also when the module is imported inside the test or reached through a helper module. A plain `pkg.mod.f` reference still links only to `f`.
+- Function-level selection now follows qualified calls and references through a dotted import without alias (`import pkg.mod` then `pkg.mod.f()`), which previously produced no edge.
+- An unexpected error while building the dependency graph or selecting tests (any exception, not only a `SyntaxError` from pyan) no longer aborts the run with `INTERNALERROR`: the full suite runs and the summary shows a warning with the exception type. A failure in test prioritization likewise keeps pytest's collection order with a warning.
+- Running with `-p no:cacheprovider` no longer crashes with `AttributeError: 'Config' object has no attribute 'cache'` (even without `--regsmart`): the test history is simply not loaded or saved, and `--regsmart` warns that prioritization uses no history.
+## [0.9.1] - 2026-11-02
+
+### Fixed
+- Function-level selection now follows functions used as values, not only called: aliases (`f = pkg.mod.f`), call arguments (`pytest.raises(E, pkg.mod.f)`), list/dict elements, and names used in decorators such as `@pytest.mark.parametrize("fn", FUNCS)`. Module-level variables that hold such functions are expanded transitively, including variables imported from helper modules, so a test parametrized with a changed function is selected.
+### Added
+- Compatibility with python 3.15
+### Changed
+- Linking pytest's resolved fixtures to collected tests no longer scans every function of the graph for each collected item: test and fixture functions are looked up by name and resolved once per test file and fixture. The edges and the selection are the same; on networkx (9377 items) this step drops from ~49 s to ~0.06 s.
+- Function-level graph construction no longer formats every pyan scope in a debug message once per file and pass, reuses the module ASTs pyan already parsed in the re-export, inheritance and nested-pytest analyses, skips files without `runpytest` in the nested-pytest analysis, and looks up class members per file. The dependency graph is the same; on networkx building it drops from ~67 s to ~55 s.
+- Function-level graph construction no longer scans every same-named pyan node to find a node by namespace: lookups use a per-name index that returns the same node pyan would. The dependency graph and the selection are the same; the selection step drops by about 25% on dask (100 s → 75 s) and networkx (61 s → 46 s) and by 12–14% on aeon, dvc and ipython.
+- Bump pyan3 version from 2.6.2 to 2.8.1 (latest), accepting at least 2.8.0 in pyproject.toml to avoid this error: https://github.com/Technologicat/pyan/blob/v2.6.2/pyan/anutils.py#L529
+
 ## [0.9.0] - 2026-11-01
 
 ### Fixed
+- Function-level selection now follows qualified calls through imported submodules, aliases, package re-exports, and `import *` bindings to the original function. Tests that reach a changed function through a re-export or an intermediate algorithm are therefore included.
+- Function-level selection now follows pytest's resolved fixture dependencies and class members invoked implicitly, including special methods and properties.
 - Function-level selection now retains tests that invoke pytester's `runpytest_subprocess()` or `runpytest()` helpers. The child pytest run is not visible to the parent call graph, so these tests are selected conservatively when a Python diff exists.
 - Improve function-level selection across inheritance: follow overrides and public base-class APIs to tests using concrete subclasses, including subclasses imported through package re-exports; retain the pyan graph if supplemental AST analysis fails.
 ### Changed
+- Function-level filtering of collected items now looks up the selected nodeids in a set (the item's nodeid and its `[`/`::` prefixes) instead of comparing every item against every selected node. The selected items are the same; large selections no longer add seconds to collection (e.g. ~2.0 s to ~15 ms for 8197 items and 770 selected nodes).
 - Drop support for Python 3.10 in order to use secure versions of filelock (>=4.2.1)
 ## [0.8.2] - 2026-10-31
 
